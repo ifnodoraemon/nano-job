@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: nano-job
+  datasource:
+    url: jdbc:sqlite:nano-job.db
+    driver-class-name: org.sqlite.JDBC
+  jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+nano-job:
+  scheduler:
+    poll-interval: 1s
+  execution:
+    pool-size: 4
+    retry-delay: 30s
