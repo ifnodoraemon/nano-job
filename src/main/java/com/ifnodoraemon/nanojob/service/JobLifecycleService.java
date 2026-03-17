@@ -3,6 +3,7 @@ package com.ifnodoraemon.nanojob.service;
 import com.ifnodoraemon.nanojob.config.NanoJobProperties;
 import com.ifnodoraemon.nanojob.domain.entity.Job;
 import com.ifnodoraemon.nanojob.domain.enums.JobStatus;
+import com.ifnodoraemon.nanojob.metrics.JobMetricsService;
 import com.ifnodoraemon.nanojob.repository.JobRepository;
 import com.ifnodoraemon.nanojob.retry.RetryDecision;
 import com.ifnodoraemon.nanojob.retry.RetryPolicyRegistry;
@@ -19,17 +20,20 @@ public class JobLifecycleService {
     private final NanoJobProperties properties;
     private final JobExecutionLogService jobExecutionLogService;
     private final RetryPolicyRegistry retryPolicyRegistry;
+    private final JobMetricsService jobMetricsService;
 
     public JobLifecycleService(
             JobRepository jobRepository,
             NanoJobProperties properties,
             JobExecutionLogService jobExecutionLogService,
-            RetryPolicyRegistry retryPolicyRegistry
+            RetryPolicyRegistry retryPolicyRegistry,
+            JobMetricsService jobMetricsService
     ) {
         this.jobRepository = jobRepository;
         this.properties = properties;
         this.jobExecutionLogService = jobExecutionLogService;
         this.retryPolicyRegistry = retryPolicyRegistry;
+        this.jobMetricsService = jobMetricsService;
     }
 
     @Transactional
@@ -72,6 +76,7 @@ public class JobLifecycleService {
             if (updated != 1) {
                 throw new InvalidJobStateException("Job was not RUNNING when marking retry wait: " + job.getId());
             }
+            jobMetricsService.recordRetryScheduled(job.getType());
             return;
         }
 
@@ -86,6 +91,7 @@ public class JobLifecycleService {
         if (updated != 1) {
             throw new InvalidJobStateException("Job was not RUNNING when marking failed: " + job.getId());
         }
+        jobMetricsService.recordFinalFailure(job.getType());
     }
 
     @Transactional
@@ -93,5 +99,6 @@ public class JobLifecycleService {
         String errorMessage = "Execution lease expired for owner: " + job.getLockOwner();
         markFailure(job, new IllegalStateException(errorMessage));
         jobExecutionLogService.markLatestRunningAsFailed(job.getId(), errorMessage);
+        jobMetricsService.recordLeaseRecovered(job.getType());
     }
 }

@@ -2,6 +2,7 @@ package com.ifnodoraemon.nanojob.service;
 
 import com.ifnodoraemon.nanojob.domain.entity.Job;
 import com.ifnodoraemon.nanojob.domain.enums.JobStatus;
+import com.ifnodoraemon.nanojob.metrics.JobMetricsService;
 import com.ifnodoraemon.nanojob.repository.JobRepository;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,15 +19,18 @@ public class JobDispatchService {
     private final JobRepository jobRepository;
     private final JobLifecycleService jobLifecycleService;
     private final JobExecutionService jobExecutionService;
+    private final JobMetricsService jobMetricsService;
 
     public JobDispatchService(
             JobRepository jobRepository,
             JobLifecycleService jobLifecycleService,
-            JobExecutionService jobExecutionService
+            JobExecutionService jobExecutionService,
+            JobMetricsService jobMetricsService
     ) {
         this.jobRepository = jobRepository;
         this.jobLifecycleService = jobLifecycleService;
         this.jobExecutionService = jobExecutionService;
+        this.jobMetricsService = jobMetricsService;
     }
 
     public void dispatchDueJobs() {
@@ -45,6 +49,7 @@ public class JobDispatchService {
         for (Job job : dueJobs) {
             if (jobLifecycleService.tryClaim(job)) {
                 jobExecutionService.submit(job.getId());
+                jobMetricsService.recordDispatchClaimed(job.getType());
                 dispatched++;
             }
         }
