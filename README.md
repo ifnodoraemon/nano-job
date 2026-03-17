@@ -2,6 +2,11 @@
 
 `nano-job` is a Java 21 Spring Boot backend for delayed jobs, async execution, retry control, deduplication, and execution tracking.
 
+Chinese documentation:
+
+- [README.zh-CN.md](./README.zh-CN.md)
+- [docs/interview-notes.zh-CN.md](./docs/interview-notes.zh-CN.md)
+
 The project is intentionally backend-only and small in scope, but it focuses on the parts that actually demonstrate Java backend depth:
 
 - state transitions
