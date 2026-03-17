@@ -1,6 +1,7 @@
 package com.ifnodoraemon.nanojob;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ifnodoraemon.nanojob.domain.dto.CreateJobRequest;
@@ -11,6 +12,8 @@ import com.ifnodoraemon.nanojob.repository.JobExecutionLogRepository;
 import com.ifnodoraemon.nanojob.repository.JobRepository;
 import com.ifnodoraemon.nanojob.service.JobDispatchService;
 import com.ifnodoraemon.nanojob.service.JobService;
+import com.ifnodoraemon.nanojob.service.JobTypeService;
+import com.ifnodoraemon.nanojob.support.exception.InvalidJobPayloadException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import org.awaitility.Awaitility;
@@ -39,6 +42,9 @@ class JobFlowIntegrationTests {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private JobTypeService jobTypeService;
 
     @BeforeEach
     void setUp() {
@@ -71,6 +77,20 @@ class JobFlowIntegrationTests {
                                 assertThat(log.getFinishedAt()).isNotNull();
                             });
                 });
+    }
+
+    @Test
+    void shouldRejectInvalidPayloadBeforePersistingJob() {
+        assertThatThrownBy(() -> jobService.createJob(new CreateJobRequest(
+                JobType.HTTP,
+                objectMapper.createObjectNode(),
+                LocalDateTime.now().plusSeconds(10),
+                1,
+                null
+        ))).isInstanceOf(InvalidJobPayloadException.class)
+                .hasMessageContaining("non-blank url");
+
+        assertThat(jobRepository.findAll()).isEmpty();
     }
 
     @Test
@@ -155,14 +175,19 @@ class JobFlowIntegrationTests {
     }
 
     @Test
-    void shouldNotRetryNonRetryableValidationFailure() {
+    void shouldNotRetryNonRetryableExecutionFailure() {
         var created = jobService.createJob(new CreateJobRequest(
                 JobType.HTTP,
-                objectMapper.createObjectNode(),
+                objectMapper.createObjectNode().put("url", "http://no-retry.local"),
                 LocalDateTime.now().minusSeconds(1),
                 3,
                 null
         ));
+
+        jobRepository.findByJobKey(created.jobKey()).ifPresent(job -> {
+            job.setPayload(objectMapper.createObjectNode().toString());
+            jobRepository.save(job);
+        });
 
         jobDispatchService.dispatchDueJobs();
 
@@ -240,6 +265,13 @@ class JobFlowIntegrationTests {
         assertThat(second.jobKey()).isEqualTo(first.jobKey());
         assertThat(second.dedupKey()).isEqualTo("order-123");
         assertThat(jobRepository.findAll()).hasSize(1);
+    }
+
+    @Test
+    void shouldDescribeSupportedJobTypes() {
+        assertThat(jobTypeService.listJobTypes())
+                .extracting(definition -> definition.type().name())
+                .containsExactly("HTTP", "NOOP");
     }
 
     @Test

@@ -24,6 +24,13 @@ public class ApiExceptionHandler {
         return detail;
     }
 
+    @ExceptionHandler(InvalidJobPayloadException.class)
+    public ProblemDetail handleInvalidPayload(InvalidJobPayloadException exception) {
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
+        detail.setType(URI.create("https://example.com/problems/invalid-job-payload"));
+        return detail;
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ProblemDetail handleValidation(MethodArgumentNotValidException exception) {
         ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Request validation failed");

@@ -7,6 +7,7 @@ import com.ifnodoraemon.nanojob.domain.dto.JobResponse;
 import com.ifnodoraemon.nanojob.domain.entity.Job;
 import com.ifnodoraemon.nanojob.domain.enums.JobStatus;
 import com.ifnodoraemon.nanojob.domain.enums.JobType;
+import com.ifnodoraemon.nanojob.jobtype.JobTypeDefinitionRegistry;
 import com.ifnodoraemon.nanojob.repository.JobExecutionLogRepository;
 import com.ifnodoraemon.nanojob.repository.JobRepository;
 import com.ifnodoraemon.nanojob.support.exception.InvalidJobStateException;
@@ -30,20 +31,25 @@ public class JobService {
 
     private final JobRepository jobRepository;
     private final JobExecutionLogRepository jobExecutionLogRepository;
+    private final JobTypeDefinitionRegistry jobTypeDefinitionRegistry;
     private final ObjectMapper objectMapper;
 
     public JobService(
             JobRepository jobRepository,
             JobExecutionLogRepository jobExecutionLogRepository,
+            JobTypeDefinitionRegistry jobTypeDefinitionRegistry,
             ObjectMapper objectMapper
     ) {
         this.jobRepository = jobRepository;
         this.jobExecutionLogRepository = jobExecutionLogRepository;
+        this.jobTypeDefinitionRegistry = jobTypeDefinitionRegistry;
         this.objectMapper = objectMapper;
     }
 
     @Transactional
     public JobResponse createJob(CreateJobRequest request) {
+        jobTypeDefinitionRegistry.get(request.type()).validatePayload(request.payload());
+
         if (request.dedupKey() != null && !request.dedupKey().isBlank()) {
             var existing = jobRepository.findFirstByDedupKeyAndStatusInOrderByCreatedAtDesc(
                     request.dedupKey(),
