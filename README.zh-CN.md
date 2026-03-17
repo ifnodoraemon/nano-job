@@ -1,6 +1,6 @@
 # nano-job
 
-`nano-job` 是一个基于 Java 21 和 Spring Boot 的纯后端任务执行平台，聚焦于延迟任务、异步执行、重试控制、去重语义和执行追踪。
+`nano-job` 是一个基于 Java 21 和 Spring Boot 的纯后端任务执行平台，聚焦于调度、异步投递、并发安全、失败恢复和执行追踪。
 
 这个项目刻意保持体量小，不做前端，也不堆业务页面，但它重点覆盖了真正能体现 Java 后端深度的部分：
 
@@ -19,6 +19,7 @@
 - Spring Web
 - Spring Data JPA
 - SQLite
+- Spring Data Redis
 - Micrometer
 - JUnit 5
 
@@ -35,13 +36,18 @@
 
 - 任务创建、查询、取消、分页查询
 - 延迟执行
-- 独立线程池异步执行
+- worker 异步消费执行
 - 执行租约与超时恢复
+- 长任务 heartbeat 续租
 - 按任务类型区分重试策略
 - 提交幂等与语义漂移检测
 - 时间窗口去重
+- 事务性 outbox
+- 可切换的 dispatch transport
+- 最小 Redis Stream transport
 - 每次 attempt 的执行日志
 - 基于注解自动发现的 payload 契约
+- TraceId 传播
 - Micrometer 计数器和状态 gauge
 
 ## 架构主线
@@ -52,16 +58,19 @@
 2. `JobService` 校验 payload 并执行 dedup 策略
 3. `JobScheduler` 触发 `JobDispatchService`
 4. `JobDispatchService` 找出到期任务并尝试领取
-5. `JobExecutionService` 将任务提交到独立执行器
-6. `JobHandler` 执行具体任务逻辑
-7. `JobLifecycleService` 决定任务进入 `SUCCESS`、`RETRY_WAIT` 或 `FAILED`
-8. `JobExecutionLogService` 记录每次执行 attempt
-9. `JobMetricsService` 记录执行指标和状态指标
+5. `JobLifecycleService` 在同一事务里完成状态切换和 outbox 事件落库
+6. `JobOutboxService` 将投递请求发给 transport
+7. `JobDispatchTransport` 把消息投递到本地队列或 Redis Stream
+8. `JobWorkerService` 异步消费 delivery
+9. `JobHandler` 执行具体任务逻辑
+10. `JobExecutionLogService` 记录每次执行 attempt
+11. `JobMetricsService` 记录执行指标和状态指标
 
 核心包说明：
 
 - `controller`：API 接口层
 - `service`：任务编排与生命周期控制
+- `transport`：任务投递通道抽象
 - `handler`：任务执行逻辑
 - `retry`：按类型区分的重试策略
 - `dedup`：去重策略与决策模型
@@ -85,6 +94,7 @@
 - 只有 `PENDING` 和 `RETRY_WAIT` 能被领取
 - 只有 `RUNNING` 能进入 `SUCCESS` 或 `FAILED`
 - `RUNNING` 带租约，避免任务永久挂死
+- 长任务通过 heartbeat 自动续租
 - 租约过期后会回到统一失败路径，而不是另起一套恢复逻辑
 
 这意味着“超时恢复”和“普通执行失败”复用同一套重试与终态语义，系统更统一。
@@ -138,6 +148,21 @@ nano-job:
   - 简单线性重试
 
 这样生命周期服务只负责状态流转，而恢复策略由类型自己定义。
+
+## 异步与并发设计
+
+这个项目不是简单地“用了线程池”，而是把并发和异步边界显式做出来了。
+
+当前关键机制：
+
+- 数据库条件更新做 CAS 领取，防止重复消费
+- `RUNNING` 带租约，worker 崩溃后可恢复
+- heartbeat 续租，避免长任务被误超时
+- `claim + outbox` 同事务，降低异步投递丢失风险
+- `transport` 边界支持 `LOCAL` 和 `REDIS`
+- `worker` 池负责异步消费，不让调度器直接执行业务逻辑
+
+这让 `nano-job` 更像一个小型任务平台，而不是普通接口服务。
 
 ## HTTP 任务执行
 
@@ -223,10 +248,12 @@ Micrometer 指标已经接入主执行链路。
 
 - 重复领取保护
 - 租约超时恢复
+- 长任务 heartbeat 续租
 - 重试策略行为
 - dedup 漂移拒绝
 - dedup 时间窗口
 - 真实 HTTP 执行
+- Redis transport 编码、解码和 ack
 - 指标埋点
 
 ## 为什么这个项目有价值
@@ -237,7 +264,8 @@ Micrometer 指标已经接入主执行链路。
 
 - 状态机设计
 - 基于条件更新的幂等领取
-- 调度与执行解耦
+- 调度、投递、消费解耦
+- outbox 驱动的可靠异步
 - 类型化 payload 契约
 - 策略化的重试与 dedup
 - 外部依赖错误分类
