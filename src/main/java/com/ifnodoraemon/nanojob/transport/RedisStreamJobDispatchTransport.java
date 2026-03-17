@@ -5,7 +5,6 @@ import com.ifnodoraemon.nanojob.service.QueuedJob;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,17 +13,11 @@ import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.ReadOffset;
 import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.connection.stream.StreamReadOptions;
-import org.springframework.data.redis.connection.stream.StringRecord;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 public class RedisStreamJobDispatchTransport implements JobDispatchTransport {
 
     private static final Logger log = LoggerFactory.getLogger(RedisStreamJobDispatchTransport.class);
-
-    private static final String FIELD_JOB_ID = "jobId";
-    private static final String FIELD_TRACE_ID = "traceId";
-    private static final String FIELD_EXECUTION_TOKEN = "executionToken";
-    private static final String FIELD_OUTBOX_EVENT_ID = "outboxEventId";
 
     private final StringRedisTemplate stringRedisTemplate;
     private final String streamKey;
@@ -44,7 +37,9 @@ public class RedisStreamJobDispatchTransport implements JobDispatchTransport {
     @Override
     public boolean publish(QueuedJob queuedJob) {
         ensureConsumerGroup();
-        return stringRedisTemplate.opsForStream().add(toRecord(queuedJob)) != null;
+        return stringRedisTemplate.opsForStream().add(
+                RedisDispatchMessage.fromQueuedJob(queuedJob).toRecord(streamKey)
+        ) != null;
     }
 
     @Override
@@ -88,37 +83,10 @@ public class RedisStreamJobDispatchTransport implements JobDispatchTransport {
 
     private DispatchDelivery toDelivery(MapRecord<String, Object, Object> record) {
         return new DispatchDelivery(
-                toQueuedJob(record),
+                RedisDispatchMessage.fromRecord(record).toQueuedJob(),
                 () -> acknowledge(record),
                 () -> log.debug("Leaving Redis stream record pending for retry recordId={}", record.getId().getValue())
         );
-    }
-
-    private StringRecord toRecord(QueuedJob queuedJob) {
-        return org.springframework.data.redis.connection.stream.StreamRecords.string(Map.of(
-                FIELD_JOB_ID, String.valueOf(queuedJob.jobId()),
-                FIELD_TRACE_ID, queuedJob.traceId(),
-                FIELD_EXECUTION_TOKEN, queuedJob.executionToken(),
-                FIELD_OUTBOX_EVENT_ID, String.valueOf(queuedJob.outboxEventId())
-        )).withStreamKey(streamKey);
-    }
-
-    private QueuedJob toQueuedJob(MapRecord<String, Object, Object> record) {
-        Map<Object, Object> value = record.getValue();
-        return new QueuedJob(
-                Long.valueOf(requiredField(value, FIELD_JOB_ID)),
-                requiredField(value, FIELD_TRACE_ID),
-                requiredField(value, FIELD_EXECUTION_TOKEN),
-                Long.valueOf(requiredField(value, FIELD_OUTBOX_EVENT_ID))
-        );
-    }
-
-    private String requiredField(Map<Object, Object> value, String field) {
-        String resolved = Objects.toString(value.get(field), null);
-        if (resolved == null) {
-            throw new IllegalStateException("Missing Redis stream field: " + field);
-        }
-        return resolved;
     }
 
     private void ensureConsumerGroup() {
