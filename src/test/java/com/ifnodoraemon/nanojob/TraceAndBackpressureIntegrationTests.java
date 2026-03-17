@@ -31,7 +31,8 @@ import org.springframework.test.web.servlet.MockMvc;
         "nano-job.execution.queue-capacity=0",
         "nano-job.execution.rejection-policy=ABORT",
         "nano-job.execution.retry-delay=100ms",
-        "nano-job.scheduler.poll-interval=10s"
+        "nano-job.scheduler.poll-interval=10s",
+        "nano-job.scheduler.capacity-aware-dispatch=false"
 })
 @AutoConfigureMockMvc
 class TraceAndBackpressureIntegrationTests {

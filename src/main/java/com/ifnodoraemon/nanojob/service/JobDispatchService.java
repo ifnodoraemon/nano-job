@@ -21,6 +21,7 @@ public class JobDispatchService {
 
     private final JobRepository jobRepository;
     private final NanoJobProperties nanoJobProperties;
+    private final JobDispatchCapacityService jobDispatchCapacityService;
     private final JobLifecycleService jobLifecycleService;
     private final JobExecutionService jobExecutionService;
     private final JobMetricsService jobMetricsService;
@@ -28,12 +29,14 @@ public class JobDispatchService {
     public JobDispatchService(
             JobRepository jobRepository,
             NanoJobProperties nanoJobProperties,
+            JobDispatchCapacityService jobDispatchCapacityService,
             JobLifecycleService jobLifecycleService,
             JobExecutionService jobExecutionService,
             JobMetricsService jobMetricsService
     ) {
         this.jobRepository = jobRepository;
         this.nanoJobProperties = nanoJobProperties;
+        this.jobDispatchCapacityService = jobDispatchCapacityService;
         this.jobLifecycleService = jobLifecycleService;
         this.jobExecutionService = jobExecutionService;
         this.jobMetricsService = jobMetricsService;
@@ -54,7 +57,14 @@ public class JobDispatchService {
         dueJobs.addAll(jobRepository.findByStatusAndNextRetryAtLessThanEqualOrderByNextRetryAtAsc(JobStatus.RETRY_WAIT, now, page));
 
         int dispatched = 0;
+        int claimBudget = nanoJobProperties.getScheduler().isCapacityAwareDispatch()
+                ? jobDispatchCapacityService.availableSubmissionSlots()
+                : Integer.MAX_VALUE;
         for (Job job : dueJobs) {
+            if (dispatched >= claimBudget) {
+                jobMetricsService.recordDispatchThrottled(job.getType());
+                continue;
+            }
             if (jobLifecycleService.tryClaim(job)) {
                 jobExecutionService.submit(job.getId());
                 jobMetricsService.recordDispatchClaimed(job.getType());
@@ -67,7 +77,8 @@ public class JobDispatchService {
                 TraceContext.getTraceId(),
                 timedOutRunningJobs.size(),
                 dueJobs.size(),
-                dispatched
+                dispatched,
+                claimBudget
         );
     }
 }

@@ -32,6 +32,7 @@ public class NanoJobProperties {
 
         private Duration pollInterval = Duration.ofSeconds(1);
         private int batchSize = 100;
+        private boolean capacityAwareDispatch = true;
 
         public Duration getPollInterval() {
             return pollInterval;
@@ -47,6 +48,14 @@ public class NanoJobProperties {
 
         public void setBatchSize(int batchSize) {
             this.batchSize = batchSize;
+        }
+
+        public boolean isCapacityAwareDispatch() {
+            return capacityAwareDispatch;
+        }
+
+        public void setCapacityAwareDispatch(boolean capacityAwareDispatch) {
+            this.capacityAwareDispatch = capacityAwareDispatch;
         }
     }
 

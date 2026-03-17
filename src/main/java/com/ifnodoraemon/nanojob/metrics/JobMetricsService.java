@@ -40,6 +40,16 @@ public class JobMetricsService {
                         executor -> executor.getThreadPoolExecutor() == null ? 0 : executor.getThreadPoolExecutor().getQueue().size())
                 .description("Current nano-job executor queue size")
                 .register(meterRegistry);
+        Gauge.builder("nano.job.dispatch.available_slots", jobTaskExecutor, executor -> {
+                    if (executor.getThreadPoolExecutor() == null) {
+                        return 0;
+                    }
+                    int totalCapacity = executor.getMaxPoolSize() + executor.getThreadPoolExecutor().getQueue().remainingCapacity();
+                    int inFlight = executor.getActiveCount() + executor.getThreadPoolExecutor().getQueue().size();
+                    return Math.max(0, totalCapacity - inFlight);
+                })
+                .description("Estimated available nano-job dispatch slots")
+                .register(meterRegistry);
     }
 
     public void recordExecutionStarted(JobType type) {
@@ -72,6 +82,10 @@ public class JobMetricsService {
 
     public void recordDispatchClaimed(JobType type) {
         counter("nano.job.dispatch.claimed", type).increment();
+    }
+
+    public void recordDispatchThrottled(JobType type) {
+        counter("nano.job.dispatch.throttled", type).increment();
     }
 
     public void recordExecutionRejected(JobType type) {
