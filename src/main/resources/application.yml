@@ -2,8 +2,10 @@ spring:
   application:
     name: nano-job
   datasource:
-    url: jdbc:sqlite:nano-job.db
+    url: jdbc:sqlite:nano-job.db?busy_timeout=5000
     driver-class-name: org.sqlite.JDBC
+    hikari:
+      maximum-pool-size: 1
   jpa:
     database-platform: org.hibernate.community.dialect.SQLiteDialect
     hibernate:
@@ -12,6 +14,10 @@ spring:
     properties:
       hibernate:
         format_sql: true
+  data:
+    redis:
+      repositories:
+        enabled: false
 
 management:
   endpoints:
@@ -43,3 +49,8 @@ nano-job:
     retry-delay: 250ms
   transport:
     type: LOCAL
+    redis:
+      stream-key: nano-job:dispatch
+      consumer-group: nano-job-workers
+      consumer-name: nano-job-local
+      block-timeout: 1s

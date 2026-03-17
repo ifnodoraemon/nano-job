@@ -19,8 +19,11 @@ public class LocalQueueJobDispatchTransport implements JobDispatchTransport {
     }
 
     @Override
-    public QueuedJob take() throws InterruptedException {
-        return queue.take();
+    public DispatchDelivery take() throws InterruptedException {
+        QueuedJob queuedJob = queue.take();
+        return new DispatchDelivery(queuedJob, () -> {
+        }, () -> {
+        });
     }
 
     @Override

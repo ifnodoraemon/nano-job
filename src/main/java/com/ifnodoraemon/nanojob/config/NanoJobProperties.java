@@ -206,6 +206,7 @@ public class NanoJobProperties {
     public static class Transport {
 
         private DispatchTransportType type = DispatchTransportType.LOCAL;
+        private final Redis redis = new Redis();
 
         public DispatchTransportType getType() {
             return type;
@@ -213,6 +214,50 @@ public class NanoJobProperties {
 
         public void setType(DispatchTransportType type) {
             this.type = type;
+        }
+
+        public Redis getRedis() {
+            return redis;
+        }
+    }
+
+    public static class Redis {
+
+        private String streamKey = "nano-job:dispatch";
+        private String consumerGroup = "nano-job-workers";
+        private String consumerName = "nano-job-local";
+        private Duration blockTimeout = Duration.ofSeconds(1);
+
+        public String getStreamKey() {
+            return streamKey;
+        }
+
+        public void setStreamKey(String streamKey) {
+            this.streamKey = streamKey;
+        }
+
+        public String getConsumerGroup() {
+            return consumerGroup;
+        }
+
+        public void setConsumerGroup(String consumerGroup) {
+            this.consumerGroup = consumerGroup;
+        }
+
+        public String getConsumerName() {
+            return consumerName;
+        }
+
+        public void setConsumerName(String consumerName) {
+            this.consumerName = consumerName;
+        }
+
+        public Duration getBlockTimeout() {
+            return blockTimeout;
+        }
+
+        public void setBlockTimeout(Duration blockTimeout) {
+            this.blockTimeout = blockTimeout;
         }
     }
 }

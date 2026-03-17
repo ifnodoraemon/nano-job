@@ -6,7 +6,7 @@ public interface JobDispatchTransport {
 
     boolean publish(QueuedJob queuedJob);
 
-    QueuedJob take() throws InterruptedException;
+    DispatchDelivery take() throws InterruptedException;
 
     int depth();
 

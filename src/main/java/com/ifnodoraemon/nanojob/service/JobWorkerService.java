@@ -2,6 +2,7 @@ package com.ifnodoraemon.nanojob.service;
 
 import com.ifnodoraemon.nanojob.config.NanoJobProperties;
 import com.ifnodoraemon.nanojob.support.tracing.TraceContext;
+import com.ifnodoraemon.nanojob.transport.DispatchDelivery;
 import com.ifnodoraemon.nanojob.transport.JobDispatchTransport;
 import jakarta.annotation.PreDestroy;
 import jakarta.annotation.PostConstruct;
@@ -55,12 +56,17 @@ public class JobWorkerService {
     private void consumeLoop() {
         while (running.get() && !Thread.currentThread().isInterrupted()) {
             try {
-                QueuedJob queuedJob = jobDispatchTransport.take();
+                DispatchDelivery delivery = jobDispatchTransport.take();
+                QueuedJob queuedJob = delivery.queuedJob();
                 Map<String, String> previous = TraceContext.copy();
                 activeExecutions.incrementAndGet();
                 try {
                     TraceContext.setTraceId(queuedJob.traceId());
                     jobExecutionService.process(queuedJob);
+                    delivery.ack();
+                } catch (Exception exception) {
+                    delivery.retryLater();
+                    throw exception;
                 } finally {
                     activeExecutions.decrementAndGet();
                     TraceContext.restore(previous);
