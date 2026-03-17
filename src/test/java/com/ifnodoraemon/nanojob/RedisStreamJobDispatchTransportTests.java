@@ -27,6 +27,7 @@ import org.springframework.data.redis.connection.stream.StringRecord;
 import org.springframework.data.redis.core.StreamOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
+@SuppressWarnings("unchecked")
 class RedisStreamJobDispatchTransportTests {
 
     private static final String STREAM_KEY = "nano-job:test-stream";
@@ -40,7 +41,7 @@ class RedisStreamJobDispatchTransportTests {
     @BeforeEach
     void setUp() {
         stringRedisTemplate = mock(StringRedisTemplate.class);
-        streamOperations = mock(StreamOperations.class);
+        streamOperations = (StreamOperations<String, Object, Object>) mock(StreamOperations.class);
         when(stringRedisTemplate.opsForStream()).thenReturn(streamOperations);
         when(streamOperations.createGroup(STREAM_KEY, ReadOffset.latest(), CONSUMER_GROUP)).thenReturn("OK");
         transport = new RedisStreamJobDispatchTransport(stringRedisTemplate, properties());
@@ -65,7 +66,6 @@ class RedisStreamJobDispatchTransportTests {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void takeShouldDecodeQueuedJobAndAcknowledgeRecord() throws InterruptedException {
         RecordId recordId = RecordId.of("1-0");
         MapRecord<String, Object, Object> record = mock(MapRecord.class);

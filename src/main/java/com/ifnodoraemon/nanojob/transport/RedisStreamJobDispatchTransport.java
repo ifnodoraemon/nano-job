@@ -13,6 +13,7 @@ import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.ReadOffset;
 import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.connection.stream.StreamReadOptions;
+import org.springframework.data.redis.core.StreamOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 public class RedisStreamJobDispatchTransport implements JobDispatchTransport {
@@ -37,7 +38,7 @@ public class RedisStreamJobDispatchTransport implements JobDispatchTransport {
     @Override
     public boolean publish(QueuedJob queuedJob) {
         ensureConsumerGroup();
-        return stringRedisTemplate.opsForStream().add(
+        return streamOperations().add(
                 RedisDispatchMessage.fromQueuedJob(queuedJob).toRecord(streamKey)
         ) != null;
     }
@@ -46,7 +47,7 @@ public class RedisStreamJobDispatchTransport implements JobDispatchTransport {
     public DispatchDelivery take() throws InterruptedException {
         ensureConsumerGroup();
         while (!Thread.currentThread().isInterrupted()) {
-            List<MapRecord<String, Object, Object>> records = stringRedisTemplate.opsForStream().read(
+            List<MapRecord<String, Object, Object>> records = streamOperations().read(
                     Consumer.from(consumerGroup, consumerName),
                     StreamReadOptions.empty().count(1).block(blockTimeout),
                     StreamOffset.create(streamKey, ReadOffset.lastConsumed())
@@ -63,7 +64,7 @@ public class RedisStreamJobDispatchTransport implements JobDispatchTransport {
 
     @Override
     public int depth() {
-        Long size = stringRedisTemplate.opsForStream().size(streamKey);
+        Long size = streamOperations().size(streamKey);
         return size == null ? 0 : Math.toIntExact(Math.min(size, Integer.MAX_VALUE));
     }
 
@@ -78,7 +79,7 @@ public class RedisStreamJobDispatchTransport implements JobDispatchTransport {
     }
 
     private void acknowledge(MapRecord<String, Object, Object> record) {
-        stringRedisTemplate.opsForStream().acknowledge(streamKey, consumerGroup, record.getId());
+        streamOperations().acknowledge(streamKey, consumerGroup, record.getId());
     }
 
     private DispatchDelivery toDelivery(MapRecord<String, Object, Object> record) {
@@ -98,7 +99,7 @@ public class RedisStreamJobDispatchTransport implements JobDispatchTransport {
                 return;
             }
             try {
-                stringRedisTemplate.opsForStream().createGroup(streamKey, ReadOffset.latest(), consumerGroup);
+                streamOperations().createGroup(streamKey, ReadOffset.latest(), consumerGroup);
             } catch (Exception exception) {
                 if (isBusyGroup(exception)) {
                     log.debug("Redis consumer group already exists streamKey={} group={}", streamKey, consumerGroup);
@@ -107,7 +108,7 @@ public class RedisStreamJobDispatchTransport implements JobDispatchTransport {
                 }
                 bootstrapStream();
                 try {
-                    stringRedisTemplate.opsForStream().createGroup(streamKey, ReadOffset.latest(), consumerGroup);
+                    streamOperations().createGroup(streamKey, ReadOffset.latest(), consumerGroup);
                 } catch (Exception nested) {
                     if (!isBusyGroup(nested)) {
                         throw nested;
@@ -121,10 +122,15 @@ public class RedisStreamJobDispatchTransport implements JobDispatchTransport {
     }
 
     private void bootstrapStream() {
-        stringRedisTemplate.opsForStream().add(
+        streamOperations().add(
                 org.springframework.data.redis.connection.stream.StreamRecords.string(Map.of("bootstrap", "1"))
                         .withStreamKey(streamKey)
         );
+    }
+
+    @SuppressWarnings("unchecked")
+    private StreamOperations<String, Object, Object> streamOperations() {
+        return (StreamOperations<String, Object, Object>) stringRedisTemplate.opsForStream();
     }
 
     private boolean isBusyGroup(Exception exception) {
