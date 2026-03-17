@@ -80,6 +80,7 @@ public class NanoJobProperties {
 
         private DeduplicationMode mode = DeduplicationMode.RETURN_EXISTING;
         private boolean detectDrift = true;
+        private Duration window = Duration.ZERO;
 
         public DeduplicationMode getMode() {
             return mode;
@@ -95,6 +96,14 @@ public class NanoJobProperties {
 
         public void setDetectDrift(boolean detectDrift) {
             this.detectDrift = detectDrift;
+        }
+
+        public Duration getWindow() {
+            return window;
+        }
+
+        public void setWindow(Duration window) {
+            this.window = window;
         }
     }
 }

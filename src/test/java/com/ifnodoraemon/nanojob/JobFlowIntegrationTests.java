@@ -22,10 +22,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @SpringBootTest(properties = {
         "nano-job.execution.retry-delay=100ms",
-        "nano-job.scheduler.poll-interval=10s"
+        "nano-job.scheduler.poll-interval=10s",
+        "nano-job.dedup.window=5m"
 })
 class JobFlowIntegrationTests {
 
@@ -288,6 +290,61 @@ class JobFlowIntegrationTests {
                 .hasMessageContaining("type or payload differs");
 
         assertThat(jobRepository.findAll()).hasSize(1);
+    }
+
+    @Test
+    void shouldReturnRecentFinishedJobWithinDedupWindow() {
+        var first = jobService.createJob(new CreateJobRequest(
+                JobType.NOOP,
+                objectMapper.createObjectNode().put("note", "same-request"),
+                LocalDateTime.now().plusSeconds(30),
+                0,
+                "order-789"
+        ));
+
+        jobRepository.findByJobKey(first.jobKey()).ifPresent(job -> {
+            job.setStatus(JobStatus.SUCCESS);
+            jobRepository.save(job);
+        });
+
+        var second = jobService.createJob(new CreateJobRequest(
+                JobType.NOOP,
+                objectMapper.createObjectNode().put("note", "same-request"),
+                LocalDateTime.now().plusSeconds(60),
+                0,
+                "order-789"
+        ));
+
+        assertThat(second.jobKey()).isEqualTo(first.jobKey());
+        assertThat(jobRepository.findAll()).hasSize(1);
+    }
+
+    @Test
+    void shouldCreateNewJobWhenRecentFinishedJobIsOutsideDedupWindow() {
+        var first = jobService.createJob(new CreateJobRequest(
+                JobType.NOOP,
+                objectMapper.createObjectNode().put("note", "same-request"),
+                LocalDateTime.now().plusSeconds(30),
+                0,
+                "order-999"
+        ));
+
+        jobRepository.findByJobKey(first.jobKey()).ifPresent(job -> {
+            job.setStatus(JobStatus.SUCCESS);
+            ReflectionTestUtils.setField(job, "createdAt", LocalDateTime.now().minusMinutes(10));
+            jobRepository.save(job);
+        });
+
+        var second = jobService.createJob(new CreateJobRequest(
+                JobType.NOOP,
+                objectMapper.createObjectNode().put("note", "same-request"),
+                LocalDateTime.now().plusSeconds(60),
+                0,
+                "order-999"
+        ));
+
+        assertThat(second.jobKey()).isNotEqualTo(first.jobKey());
+        assertThat(jobRepository.findAll()).hasSize(2);
     }
 
     @Test

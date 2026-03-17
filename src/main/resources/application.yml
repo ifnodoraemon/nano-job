@@ -30,3 +30,4 @@ nano-job:
   dedup:
     mode: RETURN_EXISTING
     detect-drift: true
+    window: 0s

@@ -18,6 +18,11 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
 
     Optional<Job> findFirstByDedupKeyAndStatusInOrderByCreatedAtDesc(String dedupKey, Set<JobStatus> statuses);
 
+    Optional<Job> findFirstByDedupKeyAndCreatedAtGreaterThanEqualOrderByCreatedAtDesc(
+            String dedupKey,
+            LocalDateTime createdAt
+    );
+
     long countByStatus(JobStatus status);
 
     java.util.List<Job> findTop100ByStatusAndExecuteAtLessThanEqualOrderByExecuteAtAsc(
