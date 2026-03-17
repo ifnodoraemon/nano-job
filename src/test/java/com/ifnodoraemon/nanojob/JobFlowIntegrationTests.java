@@ -270,8 +270,14 @@ class JobFlowIntegrationTests {
     @Test
     void shouldDescribeSupportedJobTypes() {
         assertThat(jobTypeService.listJobTypes())
-                .extracting(definition -> definition.type().name())
-                .containsExactly("HTTP", "NOOP");
+                .satisfies(definitions -> {
+                    assertThat(definitions)
+                            .extracting(definition -> definition.type().name())
+                            .containsExactly("HTTP", "NOOP");
+                    assertThat(definitions.getFirst().requiredPayloadFields()).containsExactly("url");
+                    assertThat(definitions.getFirst().optionalPayloadFields())
+                            .containsExactly("method", "headers", "body", "timeoutMillis");
+                });
     }
 
     @Test
