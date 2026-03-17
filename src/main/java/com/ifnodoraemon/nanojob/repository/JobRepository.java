@@ -6,6 +6,7 @@ import java.util.Collection;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.Set;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
@@ -25,19 +26,22 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
 
     long countByStatus(JobStatus status);
 
-    java.util.List<Job> findTop100ByStatusAndExecuteAtLessThanEqualOrderByExecuteAtAsc(
+    java.util.List<Job> findByStatusAndExecuteAtLessThanEqualOrderByExecuteAtAsc(
             JobStatus status,
-            LocalDateTime executeAt
+            LocalDateTime executeAt,
+            Pageable pageable
     );
 
-    java.util.List<Job> findTop100ByStatusAndNextRetryAtLessThanEqualOrderByNextRetryAtAsc(
+    java.util.List<Job> findByStatusAndNextRetryAtLessThanEqualOrderByNextRetryAtAsc(
             JobStatus status,
-            LocalDateTime nextRetryAt
+            LocalDateTime nextRetryAt,
+            Pageable pageable
     );
 
-    java.util.List<Job> findTop100ByStatusAndLeaseExpiresAtLessThanEqualOrderByLeaseExpiresAtAsc(
+    java.util.List<Job> findByStatusAndLeaseExpiresAtLessThanEqualOrderByLeaseExpiresAtAsc(
             JobStatus status,
-            LocalDateTime leaseExpiresAt
+            LocalDateTime leaseExpiresAt,
+            Pageable pageable
     );
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)

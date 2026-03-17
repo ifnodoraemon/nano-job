@@ -8,13 +8,20 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Lob;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "job_execution_logs")
+@Table(
+        name = "job_execution_logs",
+        indexes = {
+                @Index(name = "idx_job_logs_job_attempt", columnList = "jobId,attemptNo"),
+                @Index(name = "idx_job_logs_job_status", columnList = "jobId,status")
+        }
+)
 public class JobExecutionLog {
 
     @Id

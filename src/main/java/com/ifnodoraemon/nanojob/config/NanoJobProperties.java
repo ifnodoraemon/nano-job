@@ -31,6 +31,7 @@ public class NanoJobProperties {
     public static class Scheduler {
 
         private Duration pollInterval = Duration.ofSeconds(1);
+        private int batchSize = 100;
 
         public Duration getPollInterval() {
             return pollInterval;
@@ -38,6 +39,14 @@ public class NanoJobProperties {
 
         public void setPollInterval(Duration pollInterval) {
             this.pollInterval = pollInterval;
+        }
+
+        public int getBatchSize() {
+            return batchSize;
+        }
+
+        public void setBatchSize(int batchSize) {
+            this.batchSize = batchSize;
         }
     }
 

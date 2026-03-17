@@ -9,6 +9,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Lob;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
@@ -16,7 +17,15 @@ import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "jobs")
+@Table(
+        name = "jobs",
+        indexes = {
+                @Index(name = "idx_jobs_status_execute_at", columnList = "status,executeAt"),
+                @Index(name = "idx_jobs_status_next_retry_at", columnList = "status,nextRetryAt"),
+                @Index(name = "idx_jobs_status_lease_expires_at", columnList = "status,leaseExpiresAt"),
+                @Index(name = "idx_jobs_dedup_key_created_at", columnList = "dedupKey,createdAt")
+        }
+)
 public class Job {
 
     @Id

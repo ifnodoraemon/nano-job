@@ -22,6 +22,7 @@ management:
 nano-job:
   scheduler:
     poll-interval: 1s
+    batch-size: 100
   execution:
     pool-size: 4
     queue-capacity: 100
