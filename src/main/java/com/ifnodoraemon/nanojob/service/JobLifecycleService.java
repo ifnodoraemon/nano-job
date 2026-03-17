@@ -10,6 +10,7 @@ import com.ifnodoraemon.nanojob.retry.RetryPolicyRegistry;
 import com.ifnodoraemon.nanojob.support.exception.InvalidJobStateException;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,51 +22,74 @@ public class JobLifecycleService {
     private final JobExecutionLogService jobExecutionLogService;
     private final RetryPolicyRegistry retryPolicyRegistry;
     private final JobMetricsService jobMetricsService;
+    private final JobOutboxService jobOutboxService;
 
     public JobLifecycleService(
             JobRepository jobRepository,
             NanoJobProperties properties,
             JobExecutionLogService jobExecutionLogService,
             RetryPolicyRegistry retryPolicyRegistry,
-            JobMetricsService jobMetricsService
+            JobMetricsService jobMetricsService,
+            JobOutboxService jobOutboxService
     ) {
         this.jobRepository = jobRepository;
         this.properties = properties;
         this.jobExecutionLogService = jobExecutionLogService;
         this.retryPolicyRegistry = retryPolicyRegistry;
         this.jobMetricsService = jobMetricsService;
+        this.jobOutboxService = jobOutboxService;
     }
 
     @Transactional
     public boolean tryClaim(Job job) {
+        return tryClaimAndStage(job, null);
+    }
+
+    @Transactional
+    public boolean tryClaimAndStage(Job job, String traceId) {
         // Use a conditional update as a lightweight compare-and-set so the same
         // job cannot be claimed twice when scheduler ticks overlap.
         LocalDateTime now = LocalDateTime.now();
-        return jobRepository.claimForExecution(
+        String executionToken = UUID.randomUUID().toString();
+        int updated = jobRepository.claimForExecution(
                 job.getId(),
                 EnumSet.of(JobStatus.PENDING, JobStatus.RETRY_WAIT),
                 JobStatus.RUNNING,
                 properties.getExecution().getWorkerId(),
+                executionToken,
                 now.plus(properties.getExecution().getLeaseDuration()),
                 now
-        ) == 1;
+        );
+        if (updated != 1) {
+            return false;
+        }
+
+        jobOutboxService.stageDispatchRequested(job, executionToken, traceId);
+        return true;
     }
 
     @Transactional
-    public boolean renewLease(Long jobId) {
+    public boolean renewLease(Long jobId, String executionToken) {
         LocalDateTime now = LocalDateTime.now();
         return jobRepository.renewLease(
                 jobId,
                 JobStatus.RUNNING,
                 properties.getExecution().getWorkerId(),
+                executionToken,
                 now.plus(properties.getExecution().getLeaseDuration()),
                 now
         ) == 1;
     }
 
     @Transactional
-    public void markSuccess(Long jobId) {
-        int updated = jobRepository.markSuccess(jobId, JobStatus.RUNNING, JobStatus.SUCCESS, LocalDateTime.now());
+    public void markSuccess(Long jobId, String executionToken) {
+        int updated = jobRepository.markSuccess(
+                jobId,
+                JobStatus.RUNNING,
+                JobStatus.SUCCESS,
+                executionToken,
+                LocalDateTime.now()
+        );
         if (updated != 1) {
             throw new InvalidJobStateException("Job was not RUNNING when marking success: " + jobId);
         }
@@ -83,6 +107,7 @@ public class JobLifecycleService {
                     JobStatus.RETRY_WAIT,
                     decision.nextRetryCount(),
                     decision.nextRetryAt(),
+                    job.getExecutionToken(),
                     decision.reason(),
                     now
             );
@@ -98,6 +123,7 @@ public class JobLifecycleService {
                 JobStatus.RUNNING,
                 JobStatus.FAILED,
                 decision.nextRetryCount(),
+                job.getExecutionToken(),
                 decision.reason(),
                 now
         );
@@ -117,6 +143,7 @@ public class JobLifecycleService {
                         job.getId(),
                         JobStatus.RUNNING,
                         job.getLockOwner(),
+                        job.getExecutionToken(),
                         job.getLeaseExpiresAt(),
                         JobStatus.RETRY_WAIT,
                         decision.nextRetryCount(),
@@ -128,6 +155,7 @@ public class JobLifecycleService {
                         job.getId(),
                         JobStatus.RUNNING,
                         job.getLockOwner(),
+                        job.getExecutionToken(),
                         job.getLeaseExpiresAt(),
                         JobStatus.FAILED,
                         decision.nextRetryCount(),

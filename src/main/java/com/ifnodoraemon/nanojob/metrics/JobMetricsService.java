@@ -2,6 +2,8 @@ package com.ifnodoraemon.nanojob.metrics;
 
 import com.ifnodoraemon.nanojob.domain.enums.JobStatus;
 import com.ifnodoraemon.nanojob.domain.enums.JobType;
+import com.ifnodoraemon.nanojob.domain.enums.OutboxStatus;
+import com.ifnodoraemon.nanojob.repository.JobOutboxEventRepository;
 import com.ifnodoraemon.nanojob.repository.JobRepository;
 import com.ifnodoraemon.nanojob.service.JobDispatchCapacityService;
 import com.ifnodoraemon.nanojob.service.JobWorkerService;
@@ -26,6 +28,7 @@ public class JobMetricsService {
     public JobMetricsService(
             MeterRegistry meterRegistry,
             JobRepository jobRepository,
+            JobOutboxEventRepository jobOutboxEventRepository,
             @Qualifier("jobDispatchQueue") BlockingQueue<QueuedJob> jobDispatchQueue,
             ObjectProvider<JobDispatchCapacityService> jobDispatchCapacityServiceProvider,
             ObjectProvider<JobWorkerService> jobWorkerServiceProvider
@@ -37,6 +40,12 @@ public class JobMetricsService {
                     .tag("status", status.name())
                     .register(meterRegistry);
             statusGauges.put(status, gauge);
+        }
+        for (OutboxStatus status : OutboxStatus.values()) {
+            Gauge.builder("nano.job.outbox.count", jobOutboxEventRepository, repo -> repo.countByStatus(status))
+                    .description("Current number of outbox events by status")
+                    .tag("status", status.name())
+                    .register(meterRegistry);
         }
 
         Gauge.builder("nano.job.executor.active.count",
@@ -98,6 +107,26 @@ public class JobMetricsService {
 
     public void recordExecutionRejected(JobType type) {
         counter("nano.job.execution.rejected", type).increment();
+    }
+
+    public void recordOutboxStaged(JobType type) {
+        counter("nano.job.outbox.staged", type).increment();
+    }
+
+    public void recordOutboxPublished(JobType type) {
+        counter("nano.job.outbox.published", type).increment();
+    }
+
+    public void recordOutboxRetried(JobType type) {
+        counter("nano.job.outbox.retried", type).increment();
+    }
+
+    public void recordOutboxProcessed(JobType type) {
+        counter("nano.job.outbox.processed", type).increment();
+    }
+
+    public void recordOutboxDiscarded(JobType type) {
+        counter("nano.job.outbox.discarded", type).increment();
     }
 
     private Counter counter(String name, JobType type) {

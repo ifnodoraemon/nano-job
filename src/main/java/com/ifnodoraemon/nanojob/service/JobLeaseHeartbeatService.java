@@ -50,7 +50,7 @@ public class JobLeaseHeartbeatService {
     }
 
     private void renewLease(Job job) {
-        boolean renewed = jobLifecycleService.renewLease(job.getId());
+        boolean renewed = jobLifecycleService.renewLease(job.getId(), job.getExecutionToken());
         if (!renewed) {
             log.debug("Skipped lease renewal for jobKey={} because the job is no longer owned by this worker", job.getJobKey());
             return;

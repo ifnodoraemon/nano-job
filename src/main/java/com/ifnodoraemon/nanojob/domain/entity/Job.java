@@ -64,6 +64,9 @@ public class Job {
     @Column(length = 64)
     private String lockOwner;
 
+    @Column(length = 64)
+    private String executionToken;
+
     private LocalDateTime leaseExpiresAt;
 
     @Lob
@@ -183,6 +186,14 @@ public class Job {
 
     public void setLockOwner(String lockOwner) {
         this.lockOwner = lockOwner;
+    }
+
+    public String getExecutionToken() {
+        return executionToken;
+    }
+
+    public void setExecutionToken(String executionToken) {
+        this.executionToken = executionToken;
     }
 
     public LocalDateTime getLeaseExpiresAt() {

@@ -23,7 +23,7 @@ public class JobDispatchService {
     private final NanoJobProperties nanoJobProperties;
     private final JobDispatchCapacityService jobDispatchCapacityService;
     private final JobLifecycleService jobLifecycleService;
-    private final JobExecutionService jobExecutionService;
+    private final JobOutboxService jobOutboxService;
     private final JobMetricsService jobMetricsService;
 
     public JobDispatchService(
@@ -31,14 +31,14 @@ public class JobDispatchService {
             NanoJobProperties nanoJobProperties,
             JobDispatchCapacityService jobDispatchCapacityService,
             JobLifecycleService jobLifecycleService,
-            JobExecutionService jobExecutionService,
+            JobOutboxService jobOutboxService,
             JobMetricsService jobMetricsService
     ) {
         this.jobRepository = jobRepository;
         this.nanoJobProperties = nanoJobProperties;
         this.jobDispatchCapacityService = jobDispatchCapacityService;
         this.jobLifecycleService = jobLifecycleService;
-        this.jobExecutionService = jobExecutionService;
+        this.jobOutboxService = jobOutboxService;
         this.jobMetricsService = jobMetricsService;
     }
 
@@ -65,14 +65,14 @@ public class JobDispatchService {
                 jobMetricsService.recordDispatchThrottled(job.getType());
                 continue;
             }
-            if (jobLifecycleService.tryClaim(job)) {
-                jobExecutionService.submit(job.getId());
+            if (jobLifecycleService.tryClaimAndStage(job, TraceContext.currentOrCreate("dispatch"))) {
                 jobMetricsService.recordDispatchClaimed(job.getType());
                 dispatched++;
             }
         }
+        jobOutboxService.publishPendingDispatches();
         log.debug(
-                "Scheduler tick at {} traceId={} timedOutRunningJobs={} dueJobs={} dispatched={}",
+                "Scheduler tick at {} traceId={} timedOutRunningJobs={} dueJobs={} dispatched={} claimBudget={}",
                 now,
                 TraceContext.getTraceId(),
                 timedOutRunningJobs.size(),

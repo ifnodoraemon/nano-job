@@ -51,6 +51,7 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
                    j.lastError = null,
                    j.nextRetryAt = null,
                    j.lockOwner = :lockOwner,
+                   j.executionToken = :executionToken,
                    j.leaseExpiresAt = :leaseExpiresAt,
                    j.updatedAt = :updatedAt
              where j.id = :jobId
@@ -61,6 +62,7 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
             @Param("claimableStatuses") Collection<JobStatus> claimableStatuses,
             @Param("runningStatus") JobStatus runningStatus,
             @Param("lockOwner") String lockOwner,
+            @Param("executionToken") String executionToken,
             @Param("leaseExpiresAt") LocalDateTime leaseExpiresAt,
             @Param("updatedAt") LocalDateTime updatedAt
     );
@@ -73,11 +75,13 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
              where j.id = :jobId
                and j.status = :expectedStatus
                and j.lockOwner = :lockOwner
+               and j.executionToken = :executionToken
             """)
     int renewLease(
             @Param("jobId") Long jobId,
             @Param("expectedStatus") JobStatus expectedStatus,
             @Param("lockOwner") String lockOwner,
+            @Param("executionToken") String executionToken,
             @Param("leaseExpiresAt") LocalDateTime leaseExpiresAt,
             @Param("updatedAt") LocalDateTime updatedAt
     );
@@ -87,15 +91,18 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
             update Job j
                set j.status = :successStatus,
                    j.lockOwner = null,
+                   j.executionToken = null,
                    j.leaseExpiresAt = null,
                    j.updatedAt = :updatedAt
              where j.id = :jobId
                and j.status = :expectedStatus
+               and j.executionToken = :executionToken
             """)
     int markSuccess(
             @Param("jobId") Long jobId,
             @Param("expectedStatus") JobStatus expectedStatus,
             @Param("successStatus") JobStatus successStatus,
+            @Param("executionToken") String executionToken,
             @Param("updatedAt") LocalDateTime updatedAt
     );
 
@@ -106,11 +113,13 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
                    j.retryCount = :retryCount,
                    j.nextRetryAt = :nextRetryAt,
                    j.lockOwner = null,
+                   j.executionToken = null,
                    j.leaseExpiresAt = null,
                    j.lastError = :lastError,
                    j.updatedAt = :updatedAt
              where j.id = :jobId
                and j.status = :expectedStatus
+               and j.executionToken = :executionToken
             """)
     int markRetryWaiting(
             @Param("jobId") Long jobId,
@@ -118,6 +127,7 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
             @Param("retryWaitStatus") JobStatus retryWaitStatus,
             @Param("retryCount") Integer retryCount,
             @Param("nextRetryAt") LocalDateTime nextRetryAt,
+            @Param("executionToken") String executionToken,
             @Param("lastError") String lastError,
             @Param("updatedAt") LocalDateTime updatedAt
     );
@@ -129,18 +139,21 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
                    j.retryCount = :retryCount,
                    j.nextRetryAt = :nextRetryAt,
                    j.lockOwner = null,
+                   j.executionToken = null,
                    j.leaseExpiresAt = null,
                    j.lastError = :lastError,
                    j.updatedAt = :updatedAt
              where j.id = :jobId
                and j.status = :expectedStatus
                and j.lockOwner = :lockOwner
+               and j.executionToken = :executionToken
                and j.leaseExpiresAt = :expectedLeaseExpiresAt
             """)
     int recoverTimedOutToRetryWaiting(
             @Param("jobId") Long jobId,
             @Param("expectedStatus") JobStatus expectedStatus,
             @Param("lockOwner") String lockOwner,
+            @Param("executionToken") String executionToken,
             @Param("expectedLeaseExpiresAt") LocalDateTime expectedLeaseExpiresAt,
             @Param("retryWaitStatus") JobStatus retryWaitStatus,
             @Param("retryCount") Integer retryCount,
@@ -155,17 +168,20 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
                set j.status = :failedStatus,
                    j.retryCount = :retryCount,
                    j.lockOwner = null,
+                   j.executionToken = null,
                    j.leaseExpiresAt = null,
                    j.lastError = :lastError,
                    j.updatedAt = :updatedAt
              where j.id = :jobId
                and j.status = :expectedStatus
+               and j.executionToken = :executionToken
             """)
     int markFailed(
             @Param("jobId") Long jobId,
             @Param("expectedStatus") JobStatus expectedStatus,
             @Param("failedStatus") JobStatus failedStatus,
             @Param("retryCount") Integer retryCount,
+            @Param("executionToken") String executionToken,
             @Param("lastError") String lastError,
             @Param("updatedAt") LocalDateTime updatedAt
     );
@@ -176,18 +192,21 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
                set j.status = :failedStatus,
                    j.retryCount = :retryCount,
                    j.lockOwner = null,
+                   j.executionToken = null,
                    j.leaseExpiresAt = null,
                    j.lastError = :lastError,
                    j.updatedAt = :updatedAt
              where j.id = :jobId
                and j.status = :expectedStatus
                and j.lockOwner = :lockOwner
+               and j.executionToken = :executionToken
                and j.leaseExpiresAt = :expectedLeaseExpiresAt
             """)
     int recoverTimedOutToFailed(
             @Param("jobId") Long jobId,
             @Param("expectedStatus") JobStatus expectedStatus,
             @Param("lockOwner") String lockOwner,
+            @Param("executionToken") String executionToken,
             @Param("expectedLeaseExpiresAt") LocalDateTime expectedLeaseExpiresAt,
             @Param("failedStatus") JobStatus failedStatus,
             @Param("retryCount") Integer retryCount,

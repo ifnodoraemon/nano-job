@@ -6,12 +6,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ifnodoraemon.nanojob.domain.dto.CreateJobRequest;
 import com.ifnodoraemon.nanojob.domain.enums.JobStatus;
 import com.ifnodoraemon.nanojob.domain.enums.JobType;
+import com.ifnodoraemon.nanojob.domain.enums.OutboxStatus;
 import com.ifnodoraemon.nanojob.repository.JobExecutionLogRepository;
 import com.ifnodoraemon.nanojob.repository.JobOutboxEventRepository;
 import com.ifnodoraemon.nanojob.repository.JobRepository;
 import com.ifnodoraemon.nanojob.service.JobDispatchService;
+import com.ifnodoraemon.nanojob.service.JobLifecycleService;
 import com.ifnodoraemon.nanojob.service.JobService;
-import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import org.awaitility.Awaitility;
@@ -24,14 +25,18 @@ import org.springframework.boot.test.context.SpringBootTest;
         "nano-job.execution.pool-size=1",
         "nano-job.execution.queue-capacity=0",
         "nano-job.execution.rejection-policy=ABORT",
-        "nano-job.scheduler.poll-interval=10s",
-        "nano-job.scheduler.capacity-aware-dispatch=true",
-        "nano-job.scheduler.batch-size=10"
+        "nano-job.execution.lease-duration=10s",
+        "nano-job.outbox.retry-delay=100ms",
+        "nano-job.scheduler.capacity-aware-dispatch=false",
+        "nano-job.scheduler.poll-interval=10s"
 })
-class DispatchCapacityIntegrationTests {
+class JobOutboxIntegrationTests {
 
     @Autowired
     private JobService jobService;
+
+    @Autowired
+    private JobLifecycleService jobLifecycleService;
 
     @Autowired
     private JobDispatchService jobDispatchService;
@@ -48,9 +53,6 @@ class DispatchCapacityIntegrationTests {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @Autowired
-    private MeterRegistry meterRegistry;
-
     @BeforeEach
     void setUp() {
         jobOutboxEventRepository.deleteAll();
@@ -59,13 +61,36 @@ class DispatchCapacityIntegrationTests {
     }
 
     @Test
-    void shouldThrottleDispatchBeforeExecutorRejectionWhenCapacityIsExhausted() {
-        double throttledBefore = counterValue("nano.job.dispatch.throttled", JobType.NOOP);
-        double rejectedBefore = counterValue("nano.job.execution.rejected", JobType.NOOP);
+    void shouldStageOutboxEventWithExecutionTokenWhenClaimSucceeds() {
+        var created = jobService.createJob(new CreateJobRequest(
+                JobType.NOOP,
+                objectMapper.createObjectNode().put("note", "outbox-stage"),
+                LocalDateTime.now().minusSeconds(1),
+                0,
+                null
+        ));
 
+        var job = jobRepository.findByJobKey(created.jobKey()).orElseThrow();
+
+        boolean claimed = jobLifecycleService.tryClaimAndStage(job, "trace-outbox-claim");
+
+        assertThat(claimed).isTrue();
+
+        var claimedJob = jobRepository.findByJobKey(created.jobKey()).orElseThrow();
+        var outboxEvent = jobOutboxEventRepository.findAll().getFirst();
+        assertThat(claimedJob.getStatus()).isEqualTo(JobStatus.RUNNING);
+        assertThat(claimedJob.getExecutionToken()).isNotBlank();
+        assertThat(outboxEvent.getStatus()).isEqualTo(OutboxStatus.PENDING);
+        assertThat(outboxEvent.getTraceId()).isEqualTo("trace-outbox-claim");
+        assertThat(outboxEvent.getExecutionToken()).isEqualTo(claimedJob.getExecutionToken());
+        assertThat(outboxEvent.getJobId()).isEqualTo(claimedJob.getId());
+    }
+
+    @Test
+    void shouldReschedulePendingOutboxPublishWhenDispatchQueueIsBusy() {
         var first = jobService.createJob(new CreateJobRequest(
                 JobType.NOOP,
-                objectMapper.createObjectNode().put("sleepMillis", 450),
+                objectMapper.createObjectNode().put("sleepMillis", 400),
                 LocalDateTime.now().minusSeconds(2),
                 0,
                 null
@@ -86,11 +111,12 @@ class DispatchCapacityIntegrationTests {
                     assertThat(jobRepository.findByJobKey(first.jobKey()).orElseThrow().getStatus())
                             .isIn(JobStatus.RUNNING, JobStatus.SUCCESS);
                     assertThat(jobRepository.findByJobKey(second.jobKey()).orElseThrow().getStatus())
-                            .isEqualTo(JobStatus.PENDING);
-                    assertThat(counterValue("nano.job.dispatch.throttled", JobType.NOOP) - throttledBefore)
-                            .isEqualTo(1.0);
-                    assertThat(counterValue("nano.job.execution.rejected", JobType.NOOP) - rejectedBefore)
-                            .isEqualTo(0.0);
+                            .isEqualTo(JobStatus.RUNNING);
+                    assertThat(jobOutboxEventRepository.findAll())
+                            .anySatisfy(event -> {
+                                assertThat(event.getStatus()).isEqualTo(OutboxStatus.PENDING);
+                                assertThat(event.getPublishAttemptCount()).isGreaterThanOrEqualTo(1);
+                            });
                 });
 
         Awaitility.await()
@@ -102,17 +128,13 @@ class DispatchCapacityIntegrationTests {
         jobDispatchService.dispatchDueJobs();
 
         Awaitility.await()
-                .atMost(Duration.ofSeconds(4))
+                .atMost(Duration.ofSeconds(3))
                 .untilAsserted(() -> {
-                    assertThat(jobRepository.findByJobKey(first.jobKey()).orElseThrow().getStatus())
-                            .isEqualTo(JobStatus.SUCCESS);
                     assertThat(jobRepository.findByJobKey(second.jobKey()).orElseThrow().getStatus())
                             .isEqualTo(JobStatus.SUCCESS);
+                    assertThat(jobOutboxEventRepository.findAll())
+                            .extracting(event -> event.getStatus())
+                            .containsOnly(OutboxStatus.PROCESSED);
                 });
-    }
-
-    private double counterValue(String name, JobType type) {
-        var counter = meterRegistry.find(name).tag("type", type.name()).counter();
-        return counter == null ? 0.0 : counter.count();
     }
 }

@@ -7,6 +7,7 @@ import com.ifnodoraemon.nanojob.domain.dto.CreateJobRequest;
 import com.ifnodoraemon.nanojob.domain.enums.JobStatus;
 import com.ifnodoraemon.nanojob.domain.enums.JobType;
 import com.ifnodoraemon.nanojob.repository.JobExecutionLogRepository;
+import com.ifnodoraemon.nanojob.repository.JobOutboxEventRepository;
 import com.ifnodoraemon.nanojob.repository.JobRepository;
 import com.ifnodoraemon.nanojob.service.JobDispatchService;
 import com.ifnodoraemon.nanojob.service.JobService;
@@ -47,12 +48,16 @@ class DispatchConcurrencyIntegrationTests {
     private JobExecutionLogRepository jobExecutionLogRepository;
 
     @Autowired
+    private JobOutboxEventRepository jobOutboxEventRepository;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     private ExecutorService executorService;
 
     @BeforeEach
     void setUp() {
+        jobOutboxEventRepository.deleteAll();
         jobExecutionLogRepository.deleteAll();
         jobRepository.deleteAll();
         executorService = Executors.newFixedThreadPool(4);

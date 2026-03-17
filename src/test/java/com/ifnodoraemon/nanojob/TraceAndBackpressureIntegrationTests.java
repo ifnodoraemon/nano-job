@@ -10,6 +10,7 @@ import com.ifnodoraemon.nanojob.domain.dto.CreateJobRequest;
 import com.ifnodoraemon.nanojob.domain.enums.JobStatus;
 import com.ifnodoraemon.nanojob.domain.enums.JobType;
 import com.ifnodoraemon.nanojob.repository.JobExecutionLogRepository;
+import com.ifnodoraemon.nanojob.repository.JobOutboxEventRepository;
 import com.ifnodoraemon.nanojob.repository.JobRepository;
 import com.ifnodoraemon.nanojob.service.JobDispatchService;
 import com.ifnodoraemon.nanojob.service.JobService;
@@ -50,6 +51,9 @@ class TraceAndBackpressureIntegrationTests {
     private JobExecutionLogRepository jobExecutionLogRepository;
 
     @Autowired
+    private JobOutboxEventRepository jobOutboxEventRepository;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     @Autowired
@@ -60,6 +64,7 @@ class TraceAndBackpressureIntegrationTests {
 
     @BeforeEach
     void setUp() {
+        jobOutboxEventRepository.deleteAll();
         jobExecutionLogRepository.deleteAll();
         jobRepository.deleteAll();
     }
@@ -114,8 +119,8 @@ class TraceAndBackpressureIntegrationTests {
     }
 
     @Test
-    void shouldRejectOverflowedExecutionAndRecordMetrics() {
-        double rejectedBefore = counterValue("nano.job.execution.rejected", JobType.NOOP);
+    void shouldRetryOverflowedDispatchThroughOutboxAndRecordMetrics() {
+        double retriedBefore = counterValue("nano.job.outbox.retried", JobType.NOOP);
 
         var first = jobService.createJob(new CreateJobRequest(
                 JobType.NOOP,
@@ -140,10 +145,18 @@ class TraceAndBackpressureIntegrationTests {
                     assertThat(jobRepository.findByJobKey(first.jobKey()).orElseThrow().getStatus())
                             .isEqualTo(JobStatus.SUCCESS);
                     assertThat(jobRepository.findByJobKey(second.jobKey()).orElseThrow().getStatus())
-                            .isEqualTo(JobStatus.FAILED);
-                    assertThat(counterValue("nano.job.execution.rejected", JobType.NOOP) - rejectedBefore)
+                            .isEqualTo(JobStatus.RUNNING);
+                    assertThat(counterValue("nano.job.outbox.retried", JobType.NOOP) - retriedBefore)
                             .isEqualTo(1.0);
                 });
+
+        jobDispatchService.dispatchDueJobs();
+
+        Awaitility.await()
+                .atMost(Duration.ofSeconds(4))
+                .untilAsserted(() ->
+                        assertThat(jobRepository.findByJobKey(second.jobKey()).orElseThrow().getStatus())
+                                .isEqualTo(JobStatus.SUCCESS));
     }
 
     private double counterValue(String name, JobType type) {

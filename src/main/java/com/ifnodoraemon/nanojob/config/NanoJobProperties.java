@@ -11,6 +11,7 @@ public class NanoJobProperties {
     private final Execution execution = new Execution();
     private final Dedup dedup = new Dedup();
     private final Http http = new Http();
+    private final Outbox outbox = new Outbox();
 
     public Scheduler getScheduler() {
         return scheduler;
@@ -26,6 +27,10 @@ public class NanoJobProperties {
 
     public Http getHttp() {
         return http;
+    }
+
+    public Outbox getOutbox() {
+        return outbox;
     }
 
     public static class Scheduler {
@@ -176,6 +181,28 @@ public class NanoJobProperties {
 
         public void setDefaultTimeout(Duration defaultTimeout) {
             this.defaultTimeout = defaultTimeout;
+        }
+    }
+
+    public static class Outbox {
+
+        private int batchSize = 100;
+        private Duration retryDelay = Duration.ofMillis(250);
+
+        public int getBatchSize() {
+            return batchSize;
+        }
+
+        public void setBatchSize(int batchSize) {
+            this.batchSize = batchSize;
+        }
+
+        public Duration getRetryDelay() {
+            return retryDelay;
+        }
+
+        public void setRetryDelay(Duration retryDelay) {
+            this.retryDelay = retryDelay;
         }
     }
 }

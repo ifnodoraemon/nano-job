@@ -39,3 +39,6 @@ nano-job:
   http:
     connect-timeout: 2s
     default-timeout: 2s
+  outbox:
+    batch-size: 100
+    retry-delay: 250ms
