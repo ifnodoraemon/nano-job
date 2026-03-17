@@ -10,6 +10,7 @@ public class NanoJobProperties {
     private final Scheduler scheduler = new Scheduler();
     private final Execution execution = new Execution();
     private final Dedup dedup = new Dedup();
+    private final Http http = new Http();
 
     public Scheduler getScheduler() {
         return scheduler;
@@ -21,6 +22,10 @@ public class NanoJobProperties {
 
     public Dedup getDedup() {
         return dedup;
+    }
+
+    public Http getHttp() {
+        return http;
     }
 
     public static class Scheduler {
@@ -104,6 +109,28 @@ public class NanoJobProperties {
 
         public void setWindow(Duration window) {
             this.window = window;
+        }
+    }
+
+    public static class Http {
+
+        private Duration connectTimeout = Duration.ofSeconds(2);
+        private Duration defaultTimeout = Duration.ofSeconds(2);
+
+        public Duration getConnectTimeout() {
+            return connectTimeout;
+        }
+
+        public void setConnectTimeout(Duration connectTimeout) {
+            this.connectTimeout = connectTimeout;
+        }
+
+        public Duration getDefaultTimeout() {
+            return defaultTimeout;
+        }
+
+        public void setDefaultTimeout(Duration defaultTimeout) {
+            this.defaultTimeout = defaultTimeout;
         }
     }
 }

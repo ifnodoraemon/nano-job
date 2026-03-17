@@ -31,3 +31,6 @@ nano-job:
     mode: RETURN_EXISTING
     detect-drift: true
     window: 0s
+  http:
+    connect-timeout: 2s
+    default-timeout: 2s

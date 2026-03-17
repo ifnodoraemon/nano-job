@@ -3,6 +3,8 @@ package com.ifnodoraemon.nanojob;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ifnodoraemon.nanojob.domain.dto.CreateJobRequest;
 import com.ifnodoraemon.nanojob.domain.entity.Job;
@@ -17,7 +19,10 @@ import com.ifnodoraemon.nanojob.support.exception.DuplicateJobSubmissionExceptio
 import com.ifnodoraemon.nanojob.support.exception.InvalidJobPayloadException;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.concurrent.Executors;
 import org.awaitility.Awaitility;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,6 +35,9 @@ import org.springframework.test.util.ReflectionTestUtils;
         "nano-job.dedup.window=5m"
 })
 class JobFlowIntegrationTests {
+
+    private static HttpServer httpServer;
+    private static int httpPort;
 
     @Autowired
     private JobService jobService;
@@ -48,6 +56,32 @@ class JobFlowIntegrationTests {
 
     @Autowired
     private JobTypeService jobTypeService;
+
+    @BeforeAll
+    static void startHttpServer() throws Exception {
+        httpServer = HttpServer.create(new java.net.InetSocketAddress(0), 0);
+        httpServer.createContext("/ok", exchange -> writeResponse(exchange, 200, "ok"));
+        httpServer.createContext("/server-error", exchange -> writeResponse(exchange, 503, "upstream unavailable"));
+        httpServer.createContext("/client-error", exchange -> writeResponse(exchange, 400, "bad request"));
+        httpServer.createContext("/slow", exchange -> {
+            try {
+                Thread.sleep(250);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            }
+            writeResponse(exchange, 200, "slow-ok");
+        });
+        httpServer.setExecutor(Executors.newCachedThreadPool());
+        httpServer.start();
+        httpPort = httpServer.getAddress().getPort();
+    }
+
+    @AfterAll
+    static void stopHttpServer() {
+        if (httpServer != null) {
+            httpServer.stop(0);
+        }
+    }
 
     @BeforeEach
     void setUp() {
@@ -174,6 +208,126 @@ class JobFlowIntegrationTests {
                                     org.assertj.core.groups.Tuple.tuple(1, JobStatus.FAILED),
                                     org.assertj.core.groups.Tuple.tuple(2, JobStatus.FAILED)
                             );
+                });
+    }
+
+    @Test
+    void shouldExecuteHttpJobAgainstLiveEndpoint() {
+        var created = jobService.createJob(new CreateJobRequest(
+                JobType.HTTP,
+                objectMapper.createObjectNode()
+                        .put("url", httpUrl("/ok"))
+                        .put("method", "POST")
+                        .put("body", "{\"event\":\"demo\"}"),
+                LocalDateTime.now().minusSeconds(1),
+                0,
+                null
+        ));
+
+        jobDispatchService.dispatchDueJobs();
+
+        Awaitility.await()
+                .atMost(Duration.ofSeconds(3))
+                .untilAsserted(() -> {
+                    Job job = jobRepository.findByJobKey(created.jobKey()).orElseThrow();
+                    assertThat(job.getStatus()).isEqualTo(JobStatus.SUCCESS);
+                    assertThat(jobExecutionLogRepository.findByJobIdOrderByAttemptNoAsc(job.getId()))
+                            .singleElement()
+                            .satisfies(log -> assertThat(log.getStatus()).isEqualTo(JobStatus.SUCCESS));
+                });
+    }
+
+    @Test
+    void shouldRetryHttpJobOnServerErrorStatus() throws InterruptedException {
+        var created = jobService.createJob(new CreateJobRequest(
+                JobType.HTTP,
+                objectMapper.createObjectNode()
+                        .put("url", httpUrl("/server-error"))
+                        .put("method", "GET"),
+                LocalDateTime.now().minusSeconds(1),
+                1,
+                null
+        ));
+
+        jobDispatchService.dispatchDueJobs();
+
+        Awaitility.await()
+                .atMost(Duration.ofSeconds(3))
+                .untilAsserted(() -> {
+                    Job job = jobRepository.findByJobKey(created.jobKey()).orElseThrow();
+                    assertThat(job.getStatus()).isEqualTo(JobStatus.RETRY_WAIT);
+                    assertThat(job.getLastError()).contains("HTTP status 503");
+                });
+
+        Thread.sleep(150);
+        jobDispatchService.dispatchDueJobs();
+
+        Awaitility.await()
+                .atMost(Duration.ofSeconds(3))
+                .untilAsserted(() -> {
+                    Job job = jobRepository.findByJobKey(created.jobKey()).orElseThrow();
+                    assertThat(job.getStatus()).isEqualTo(JobStatus.FAILED);
+                    assertThat(job.getRetryCount()).isEqualTo(2);
+                });
+    }
+
+    @Test
+    void shouldNotRetryHttpJobOnClientErrorStatus() {
+        var created = jobService.createJob(new CreateJobRequest(
+                JobType.HTTP,
+                objectMapper.createObjectNode()
+                        .put("url", httpUrl("/client-error"))
+                        .put("method", "GET"),
+                LocalDateTime.now().minusSeconds(1),
+                3,
+                null
+        ));
+
+        jobDispatchService.dispatchDueJobs();
+
+        Awaitility.await()
+                .atMost(Duration.ofSeconds(3))
+                .untilAsserted(() -> {
+                    Job job = jobRepository.findByJobKey(created.jobKey()).orElseThrow();
+                    assertThat(job.getStatus()).isEqualTo(JobStatus.FAILED);
+                    assertThat(job.getRetryCount()).isEqualTo(1);
+                    assertThat(job.getNextRetryAt()).isNull();
+                    assertThat(job.getLastError()).contains("HTTP status 400");
+                });
+    }
+
+    @Test
+    void shouldRetryHttpJobOnTimeout() throws InterruptedException {
+        var created = jobService.createJob(new CreateJobRequest(
+                JobType.HTTP,
+                objectMapper.createObjectNode()
+                        .put("url", httpUrl("/slow"))
+                        .put("method", "GET")
+                        .put("timeoutMillis", 50),
+                LocalDateTime.now().minusSeconds(1),
+                1,
+                null
+        ));
+
+        jobDispatchService.dispatchDueJobs();
+
+        Awaitility.await()
+                .atMost(Duration.ofSeconds(3))
+                .untilAsserted(() -> {
+                    Job job = jobRepository.findByJobKey(created.jobKey()).orElseThrow();
+                    assertThat(job.getStatus()).isEqualTo(JobStatus.RETRY_WAIT);
+                    assertThat(job.getLastError()).contains("HTTP I/O failure");
+                });
+
+        Thread.sleep(150);
+        jobDispatchService.dispatchDueJobs();
+
+        Awaitility.await()
+                .atMost(Duration.ofSeconds(3))
+                .untilAsserted(() -> {
+                    Job job = jobRepository.findByJobKey(created.jobKey()).orElseThrow();
+                    assertThat(job.getStatus()).isEqualTo(JobStatus.FAILED);
+                    assertThat(job.getRetryCount()).isEqualTo(2);
                 });
     }
 
@@ -400,5 +554,19 @@ class JobFlowIntegrationTests {
                                 assertThat(log.getMessage()).contains("Execution lease expired for owner: worker-a");
                             });
                 });
+    }
+
+    private static String httpUrl(String path) {
+        return "http://127.0.0.1:" + httpPort + path;
+    }
+
+    private static void writeResponse(HttpExchange exchange, int status, String body) throws java.io.IOException {
+        byte[] bytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        exchange.sendResponseHeaders(status, bytes.length);
+        try (var outputStream = exchange.getResponseBody()) {
+            outputStream.write(bytes);
+        } finally {
+            exchange.close();
+        }
     }
 }
