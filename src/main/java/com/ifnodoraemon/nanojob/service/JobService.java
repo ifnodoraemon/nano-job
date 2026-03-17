@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -43,8 +44,19 @@ public class JobService {
 
     @Transactional
     public JobResponse createJob(CreateJobRequest request) {
+        if (request.dedupKey() != null && !request.dedupKey().isBlank()) {
+            var existing = jobRepository.findFirstByDedupKeyAndStatusInOrderByCreatedAtDesc(
+                    request.dedupKey(),
+                    Set.of(JobStatus.PENDING, JobStatus.RUNNING, JobStatus.RETRY_WAIT)
+            );
+            if (existing.isPresent()) {
+                return toResponse(existing.get());
+            }
+        }
+
         Job job = new Job();
         job.setJobKey(generateJobKey());
+        job.setDedupKey(normalizeDedupKey(request.dedupKey()));
         job.setType(request.type());
         job.setStatus(JobStatus.PENDING);
         job.setPayload(writePayload(request.payload()));
@@ -104,6 +116,7 @@ public class JobService {
     private JobResponse toResponse(Job job) {
         return new JobResponse(
                 job.getJobKey(),
+                job.getDedupKey(),
                 job.getType(),
                 job.getStatus(),
                 readPayload(job.getPayload()),
@@ -123,6 +136,13 @@ public class JobService {
                 .replace("-", "")
                 .substring(0, 8)
                 .toUpperCase(Locale.ROOT);
+    }
+
+    private String normalizeDedupKey(String dedupKey) {
+        if (dedupKey == null || dedupKey.isBlank()) {
+            return null;
+        }
+        return dedupKey.trim();
     }
 
     private String writePayload(JsonNode payload) {

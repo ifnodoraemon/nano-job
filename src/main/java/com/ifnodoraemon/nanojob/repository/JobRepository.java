@@ -5,6 +5,7 @@ import com.ifnodoraemon.nanojob.domain.enums.JobStatus;
 import java.util.Collection;
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
@@ -14,6 +15,8 @@ import org.springframework.data.repository.query.Param;
 public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificationExecutor<Job> {
 
     Optional<Job> findByJobKey(String jobKey);
+
+    Optional<Job> findFirstByDedupKeyAndStatusInOrderByCreatedAtDesc(String dedupKey, Set<JobStatus> statuses);
 
     long countByStatus(JobStatus status);
 
@@ -27,12 +30,19 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
             LocalDateTime nextRetryAt
     );
 
+    java.util.List<Job> findTop100ByStatusAndLeaseExpiresAtLessThanEqualOrderByLeaseExpiresAtAsc(
+            JobStatus status,
+            LocalDateTime leaseExpiresAt
+    );
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             update Job j
                set j.status = :runningStatus,
                    j.lastError = null,
                    j.nextRetryAt = null,
+                   j.lockOwner = :lockOwner,
+                   j.leaseExpiresAt = :leaseExpiresAt,
                    j.updatedAt = :updatedAt
              where j.id = :jobId
                and j.status in :claimableStatuses
@@ -41,6 +51,8 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
             @Param("jobId") Long jobId,
             @Param("claimableStatuses") Collection<JobStatus> claimableStatuses,
             @Param("runningStatus") JobStatus runningStatus,
+            @Param("lockOwner") String lockOwner,
+            @Param("leaseExpiresAt") LocalDateTime leaseExpiresAt,
             @Param("updatedAt") LocalDateTime updatedAt
     );
 
@@ -48,6 +60,8 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
     @Query("""
             update Job j
                set j.status = :successStatus,
+                   j.lockOwner = null,
+                   j.leaseExpiresAt = null,
                    j.updatedAt = :updatedAt
              where j.id = :jobId
                and j.status = :expectedStatus
@@ -65,6 +79,8 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
                set j.status = :retryWaitStatus,
                    j.retryCount = :retryCount,
                    j.nextRetryAt = :nextRetryAt,
+                   j.lockOwner = null,
+                   j.leaseExpiresAt = null,
                    j.lastError = :lastError,
                    j.updatedAt = :updatedAt
              where j.id = :jobId
@@ -85,6 +101,8 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
             update Job j
                set j.status = :failedStatus,
                    j.retryCount = :retryCount,
+                   j.lockOwner = null,
+                   j.leaseExpiresAt = null,
                    j.lastError = :lastError,
                    j.updatedAt = :updatedAt
              where j.id = :jobId

@@ -34,6 +34,8 @@ public class NanoJobProperties {
 
         private int poolSize = 4;
         private Duration retryDelay = Duration.ofSeconds(30);
+        private Duration leaseDuration = Duration.ofSeconds(30);
+        private String workerId = "local-worker";
 
         public int getPoolSize() {
             return poolSize;
@@ -49,6 +51,22 @@ public class NanoJobProperties {
 
         public void setRetryDelay(Duration retryDelay) {
             this.retryDelay = retryDelay;
+        }
+
+        public Duration getLeaseDuration() {
+            return leaseDuration;
+        }
+
+        public void setLeaseDuration(Duration leaseDuration) {
+            this.leaseDuration = leaseDuration;
+        }
+
+        public String getWorkerId() {
+            return workerId;
+        }
+
+        public void setWorkerId(String workerId) {
+            this.workerId = workerId;
         }
     }
 }

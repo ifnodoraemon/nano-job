@@ -31,6 +31,12 @@ public class JobDispatchService {
 
     public void dispatchDueJobs() {
         LocalDateTime now = LocalDateTime.now();
+        List<Job> timedOutRunningJobs = jobRepository
+                .findTop100ByStatusAndLeaseExpiresAtLessThanEqualOrderByLeaseExpiresAtAsc(JobStatus.RUNNING, now);
+        for (Job job : timedOutRunningJobs) {
+            jobLifecycleService.recoverTimedOutJob(job);
+        }
+
         List<Job> dueJobs = new ArrayList<>();
         dueJobs.addAll(jobRepository.findTop100ByStatusAndExecuteAtLessThanEqualOrderByExecuteAtAsc(JobStatus.PENDING, now));
         dueJobs.addAll(jobRepository.findTop100ByStatusAndNextRetryAtLessThanEqualOrderByNextRetryAtAsc(JobStatus.RETRY_WAIT, now));
@@ -42,6 +48,12 @@ public class JobDispatchService {
                 dispatched++;
             }
         }
-        log.debug("Scheduler tick at {}, dueJobs={}, dispatched={}", now, dueJobs.size(), dispatched);
+        log.debug(
+                "Scheduler tick at {}, timedOutRunningJobs={}, dueJobs={}, dispatched={}",
+                now,
+                timedOutRunningJobs.size(),
+                dueJobs.size(),
+                dispatched
+        );
     }
 }

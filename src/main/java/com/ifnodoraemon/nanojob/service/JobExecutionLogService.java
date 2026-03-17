@@ -36,4 +36,15 @@ public class JobExecutionLogService {
     public void markFailure(Long logId, String message) {
         jobExecutionLogRepository.finish(logId, JobStatus.FAILED, LocalDateTime.now(), message);
     }
+
+    @Transactional
+    public void markLatestRunningAsFailed(Long jobId, String message) {
+        jobExecutionLogRepository.findFirstByJobIdAndStatusOrderByAttemptNoDesc(jobId, JobStatus.RUNNING)
+                .ifPresent(log -> jobExecutionLogRepository.finish(
+                        log.getId(),
+                        JobStatus.FAILED,
+                        LocalDateTime.now(),
+                        message
+                ));
+    }
 }

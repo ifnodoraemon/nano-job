@@ -4,6 +4,8 @@ import com.ifnodoraemon.nanojob.config.NanoJobProperties;
 import com.ifnodoraemon.nanojob.domain.entity.Job;
 import com.ifnodoraemon.nanojob.domain.enums.JobStatus;
 import com.ifnodoraemon.nanojob.repository.JobRepository;
+import com.ifnodoraemon.nanojob.retry.RetryDecision;
+import com.ifnodoraemon.nanojob.retry.RetryPolicyRegistry;
 import com.ifnodoraemon.nanojob.support.exception.InvalidJobStateException;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
@@ -15,10 +17,19 @@ public class JobLifecycleService {
 
     private final JobRepository jobRepository;
     private final NanoJobProperties properties;
+    private final JobExecutionLogService jobExecutionLogService;
+    private final RetryPolicyRegistry retryPolicyRegistry;
 
-    public JobLifecycleService(JobRepository jobRepository, NanoJobProperties properties) {
+    public JobLifecycleService(
+            JobRepository jobRepository,
+            NanoJobProperties properties,
+            JobExecutionLogService jobExecutionLogService,
+            RetryPolicyRegistry retryPolicyRegistry
+    ) {
         this.jobRepository = jobRepository;
         this.properties = properties;
+        this.jobExecutionLogService = jobExecutionLogService;
+        this.retryPolicyRegistry = retryPolicyRegistry;
     }
 
     @Transactional
@@ -29,6 +40,8 @@ public class JobLifecycleService {
                 job.getId(),
                 EnumSet.of(JobStatus.PENDING, JobStatus.RETRY_WAIT),
                 JobStatus.RUNNING,
+                properties.getExecution().getWorkerId(),
+                LocalDateTime.now().plus(properties.getExecution().getLeaseDuration()),
                 LocalDateTime.now()
         ) == 1;
     }
@@ -43,18 +56,17 @@ public class JobLifecycleService {
 
     @Transactional
     public void markFailure(Job job, Exception exception) {
-        int nextRetryCount = job.getRetryCount() + 1;
-        String errorMessage = buildErrorMessage(exception);
+        RetryDecision decision = retryPolicyRegistry.get(job.getType()).evaluate(job, exception);
         LocalDateTime now = LocalDateTime.now();
 
-        if (nextRetryCount <= job.getMaxRetry()) {
+        if (decision.retryable()) {
             int updated = jobRepository.markRetryWaiting(
                     job.getId(),
                     JobStatus.RUNNING,
                     JobStatus.RETRY_WAIT,
-                    nextRetryCount,
-                    now.plus(properties.getExecution().getRetryDelay()),
-                    errorMessage,
+                    decision.nextRetryCount(),
+                    decision.nextRetryAt(),
+                    decision.reason(),
                     now
             );
             if (updated != 1) {
@@ -67,8 +79,8 @@ public class JobLifecycleService {
                 job.getId(),
                 JobStatus.RUNNING,
                 JobStatus.FAILED,
-                nextRetryCount,
-                errorMessage,
+                decision.nextRetryCount(),
+                decision.reason(),
                 now
         );
         if (updated != 1) {
@@ -76,11 +88,10 @@ public class JobLifecycleService {
         }
     }
 
-    private String buildErrorMessage(Exception exception) {
-        String message = exception.getMessage();
-        if (message == null || message.isBlank()) {
-            return exception.getClass().getSimpleName();
-        }
-        return message;
+    @Transactional
+    public void recoverTimedOutJob(Job job) {
+        String errorMessage = "Execution lease expired for owner: " + job.getLockOwner();
+        markFailure(job, new IllegalStateException(errorMessage));
+        jobExecutionLogService.markLatestRunningAsFailed(job.getId(), errorMessage);
     }
 }

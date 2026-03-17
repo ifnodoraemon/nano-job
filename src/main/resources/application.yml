@@ -25,3 +25,5 @@ nano-job:
   execution:
     pool-size: 4
     retry-delay: 30s
+    lease-duration: 30s
+    worker-id: local-worker

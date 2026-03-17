@@ -7,6 +7,7 @@ import java.time.LocalDateTime;
 
 public record JobResponse(
         String jobKey,
+        String dedupKey,
         JobType type,
         JobStatus status,
         JsonNode payload,

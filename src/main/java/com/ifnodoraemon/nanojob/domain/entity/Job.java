@@ -26,6 +26,9 @@ public class Job {
     @Column(nullable = false, unique = true, length = 32)
     private String jobKey;
 
+    @Column(length = 64)
+    private String dedupKey;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private JobType type;
@@ -48,6 +51,11 @@ public class Job {
     private Integer retryCount;
 
     private LocalDateTime nextRetryAt;
+
+    @Column(length = 64)
+    private String lockOwner;
+
+    private LocalDateTime leaseExpiresAt;
 
     @Lob
     @Column(columnDefinition = "TEXT")
@@ -86,6 +94,14 @@ public class Job {
 
     public void setJobKey(String jobKey) {
         this.jobKey = jobKey;
+    }
+
+    public String getDedupKey() {
+        return dedupKey;
+    }
+
+    public void setDedupKey(String dedupKey) {
+        this.dedupKey = dedupKey;
     }
 
     public JobType getType() {
@@ -150,6 +166,22 @@ public class Job {
 
     public void setLastError(String lastError) {
         this.lastError = lastError;
+    }
+
+    public String getLockOwner() {
+        return lockOwner;
+    }
+
+    public void setLockOwner(String lockOwner) {
+        this.lockOwner = lockOwner;
+    }
+
+    public LocalDateTime getLeaseExpiresAt() {
+        return leaseExpiresAt;
+    }
+
+    public void setLeaseExpiresAt(LocalDateTime leaseExpiresAt) {
+        this.leaseExpiresAt = leaseExpiresAt;
     }
 
     public LocalDateTime getCanceledAt() {

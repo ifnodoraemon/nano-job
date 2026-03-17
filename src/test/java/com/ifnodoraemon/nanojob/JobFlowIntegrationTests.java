@@ -52,7 +52,8 @@ class JobFlowIntegrationTests {
                 JobType.NOOP,
                 objectMapper.createObjectNode().put("note", "run-now"),
                 LocalDateTime.now().minusSeconds(1),
-                0
+                0,
+                null
         ));
 
         jobDispatchService.dispatchDueJobs();
@@ -78,7 +79,8 @@ class JobFlowIntegrationTests {
                 JobType.NOOP,
                 objectMapper.createObjectNode().put("sleepMillis", 300),
                 LocalDateTime.now().minusSeconds(1),
-                0
+                0,
+                null
         ));
 
         jobDispatchService.dispatchDueJobs();
@@ -102,10 +104,16 @@ class JobFlowIntegrationTests {
     void shouldRetryFailedHttpJobAndEventuallyMarkItFailed() throws InterruptedException {
         var created = jobService.createJob(new CreateJobRequest(
                 JobType.HTTP,
-                objectMapper.createObjectNode(),
+                objectMapper.createObjectNode().put("url", "http://retry.local"),
                 LocalDateTime.now().minusSeconds(1),
-                1
+                1,
+                null
         ));
+
+        jobRepository.findByJobKey(created.jobKey()).ifPresent(job -> {
+            job.setPayload("{\"url\":\"http://retry.local\",\"broken\":");
+            jobRepository.save(job);
+        });
 
         jobDispatchService.dispatchDueJobs();
 
@@ -116,14 +124,14 @@ class JobFlowIntegrationTests {
                     assertThat(job.getStatus()).isEqualTo(JobStatus.RETRY_WAIT);
                     assertThat(job.getRetryCount()).isEqualTo(1);
                     assertThat(job.getNextRetryAt()).isNotNull();
-                    assertThat(job.getLastError()).contains("HTTP payload must contain a non-blank url");
+                    assertThat(job.getLastError()).contains("Invalid HTTP payload");
                     assertThat(jobExecutionLogRepository.findByJobIdOrderByAttemptNoAsc(job.getId()))
                             .singleElement()
                             .satisfies(log -> {
                                 assertThat(log.getAttemptNo()).isEqualTo(1);
                                 assertThat(log.getStatus()).isEqualTo(JobStatus.FAILED);
                                 assertThat(log.getFinishedAt()).isNotNull();
-                                assertThat(log.getMessage()).contains("HTTP payload must contain a non-blank url");
+                                assertThat(log.getMessage()).contains("Invalid HTTP payload");
                             });
                 });
 
@@ -143,6 +151,136 @@ class JobFlowIntegrationTests {
                                     org.assertj.core.groups.Tuple.tuple(1, JobStatus.FAILED),
                                     org.assertj.core.groups.Tuple.tuple(2, JobStatus.FAILED)
                             );
+                });
+    }
+
+    @Test
+    void shouldNotRetryNonRetryableValidationFailure() {
+        var created = jobService.createJob(new CreateJobRequest(
+                JobType.HTTP,
+                objectMapper.createObjectNode(),
+                LocalDateTime.now().minusSeconds(1),
+                3,
+                null
+        ));
+
+        jobDispatchService.dispatchDueJobs();
+
+        Awaitility.await()
+                .atMost(Duration.ofSeconds(3))
+                .untilAsserted(() -> {
+                    Job job = jobRepository.findByJobKey(created.jobKey()).orElseThrow();
+                    assertThat(job.getStatus()).isEqualTo(JobStatus.FAILED);
+                    assertThat(job.getRetryCount()).isEqualTo(1);
+                    assertThat(job.getNextRetryAt()).isNull();
+                    assertThat(jobExecutionLogRepository.findByJobIdOrderByAttemptNoAsc(job.getId()))
+                            .singleElement()
+                            .satisfies(log -> assertThat(log.getStatus()).isEqualTo(JobStatus.FAILED));
+                });
+    }
+
+    @Test
+    void shouldRetryNoopFailureAccordingToNoopPolicy() throws InterruptedException {
+        var created = jobService.createJob(new CreateJobRequest(
+                JobType.NOOP,
+                objectMapper.createObjectNode().put("note", "retry-me"),
+                LocalDateTime.now().minusSeconds(1),
+                1,
+                null
+        ));
+
+        jobRepository.findByJobKey(created.jobKey()).ifPresent(job -> {
+            job.setPayload("{bad-noop-payload");
+            jobRepository.save(job);
+        });
+
+        jobDispatchService.dispatchDueJobs();
+
+        Awaitility.await()
+                .atMost(Duration.ofSeconds(3))
+                .untilAsserted(() -> {
+                    Job job = jobRepository.findByJobKey(created.jobKey()).orElseThrow();
+                    assertThat(job.getStatus()).isEqualTo(JobStatus.RETRY_WAIT);
+                    assertThat(job.getRetryCount()).isEqualTo(1);
+                    assertThat(job.getLastError()).contains("Invalid NOOP payload");
+                });
+
+        Thread.sleep(150);
+        jobDispatchService.dispatchDueJobs();
+
+        Awaitility.await()
+                .atMost(Duration.ofSeconds(3))
+                .untilAsserted(() -> {
+                    Job job = jobRepository.findByJobKey(created.jobKey()).orElseThrow();
+                    assertThat(job.getStatus()).isEqualTo(JobStatus.FAILED);
+                    assertThat(job.getRetryCount()).isEqualTo(2);
+                    assertThat(jobExecutionLogRepository.findByJobIdOrderByAttemptNoAsc(job.getId()))
+                            .hasSize(2);
+                });
+    }
+
+    @Test
+    void shouldReturnExistingActiveJobWhenDedupKeyMatches() {
+        var first = jobService.createJob(new CreateJobRequest(
+                JobType.NOOP,
+                objectMapper.createObjectNode().put("note", "same-request"),
+                LocalDateTime.now().plusSeconds(30),
+                0,
+                "order-123"
+        ));
+
+        var second = jobService.createJob(new CreateJobRequest(
+                JobType.NOOP,
+                objectMapper.createObjectNode().put("note", "same-request"),
+                LocalDateTime.now().plusSeconds(60),
+                0,
+                "order-123"
+        ));
+
+        assertThat(second.jobKey()).isEqualTo(first.jobKey());
+        assertThat(second.dedupKey()).isEqualTo("order-123");
+        assertThat(jobRepository.findAll()).hasSize(1);
+    }
+
+    @Test
+    void shouldRecoverTimedOutRunningJobAndPreserveFailureHistory() {
+        Job job = new Job();
+        job.setJobKey("NJTIMEOUT1");
+        job.setType(JobType.NOOP);
+        job.setStatus(JobStatus.RUNNING);
+        job.setPayload(objectMapper.createObjectNode().put("sleepMillis", 1000).toString());
+        job.setExecuteAt(LocalDateTime.now().minusSeconds(5));
+        job.setMaxRetry(1);
+        job.setRetryCount(0);
+        job.setLockOwner("worker-a");
+        job.setLeaseExpiresAt(LocalDateTime.now().minusSeconds(1));
+        Job savedJob = jobRepository.save(job);
+
+        var runningLog = new com.ifnodoraemon.nanojob.domain.entity.JobExecutionLog();
+        runningLog.setJobId(savedJob.getId());
+        runningLog.setAttemptNo(1);
+        runningLog.setStatus(JobStatus.RUNNING);
+        jobExecutionLogRepository.save(runningLog);
+
+        jobDispatchService.dispatchDueJobs();
+
+        Awaitility.await()
+                .atMost(Duration.ofSeconds(3))
+                .untilAsserted(() -> {
+                    Job recoveredJob = jobRepository.findByJobKey(savedJob.getJobKey()).orElseThrow();
+                    assertThat(recoveredJob.getStatus()).isEqualTo(JobStatus.RETRY_WAIT);
+                    assertThat(recoveredJob.getRetryCount()).isEqualTo(1);
+                    assertThat(recoveredJob.getLockOwner()).isNull();
+                    assertThat(recoveredJob.getLeaseExpiresAt()).isNull();
+                    assertThat(recoveredJob.getLastError()).contains("Execution lease expired for owner: worker-a");
+                    assertThat(jobExecutionLogRepository.findByJobIdOrderByAttemptNoAsc(recoveredJob.getId()))
+                            .singleElement()
+                            .satisfies(log -> {
+                                assertThat(log.getAttemptNo()).isEqualTo(1);
+                                assertThat(log.getStatus()).isEqualTo(JobStatus.FAILED);
+                                assertThat(log.getFinishedAt()).isNotNull();
+                                assertThat(log.getMessage()).contains("Execution lease expired for owner: worker-a");
+                            });
                 });
     }
 }
