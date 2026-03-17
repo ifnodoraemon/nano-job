@@ -27,7 +27,6 @@ nano-job:
   execution:
     pool-size: 4
     queue-capacity: 100
-    rejection-policy: ABORT
     retry-delay: 30s
     lease-duration: 30s
     lease-heartbeat-interval: 10s
@@ -42,3 +41,5 @@ nano-job:
   outbox:
     batch-size: 100
     retry-delay: 250ms
+  transport:
+    type: LOCAL

@@ -1,6 +1,7 @@
 package com.ifnodoraemon.nanojob.config;
 
 import com.ifnodoraemon.nanojob.dedup.DeduplicationMode;
+import com.ifnodoraemon.nanojob.transport.DispatchTransportType;
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -12,6 +13,7 @@ public class NanoJobProperties {
     private final Dedup dedup = new Dedup();
     private final Http http = new Http();
     private final Outbox outbox = new Outbox();
+    private final Transport transport = new Transport();
 
     public Scheduler getScheduler() {
         return scheduler;
@@ -31,6 +33,10 @@ public class NanoJobProperties {
 
     public Outbox getOutbox() {
         return outbox;
+    }
+
+    public Transport getTransport() {
+        return transport;
     }
 
     public static class Scheduler {
@@ -68,7 +74,6 @@ public class NanoJobProperties {
 
         private int poolSize = 4;
         private int queueCapacity = 100;
-        private ExecutionRejectionPolicy rejectionPolicy = ExecutionRejectionPolicy.ABORT;
         private Duration retryDelay = Duration.ofSeconds(30);
         private Duration leaseDuration = Duration.ofSeconds(30);
         private Duration leaseHeartbeatInterval = Duration.ofSeconds(10);
@@ -88,14 +93,6 @@ public class NanoJobProperties {
 
         public void setQueueCapacity(int queueCapacity) {
             this.queueCapacity = queueCapacity;
-        }
-
-        public ExecutionRejectionPolicy getRejectionPolicy() {
-            return rejectionPolicy;
-        }
-
-        public void setRejectionPolicy(ExecutionRejectionPolicy rejectionPolicy) {
-            this.rejectionPolicy = rejectionPolicy;
         }
 
         public Duration getRetryDelay() {
@@ -203,6 +200,19 @@ public class NanoJobProperties {
 
         public void setRetryDelay(Duration retryDelay) {
             this.retryDelay = retryDelay;
+        }
+    }
+
+    public static class Transport {
+
+        private DispatchTransportType type = DispatchTransportType.LOCAL;
+
+        public DispatchTransportType getType() {
+            return type;
+        }
+
+        public void setType(DispatchTransportType type) {
+            this.type = type;
         }
     }
 }

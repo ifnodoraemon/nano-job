@@ -2,12 +2,12 @@ package com.ifnodoraemon.nanojob.service;
 
 import com.ifnodoraemon.nanojob.config.NanoJobProperties;
 import com.ifnodoraemon.nanojob.support.tracing.TraceContext;
+import com.ifnodoraemon.nanojob.transport.JobDispatchTransport;
 import jakarta.annotation.PreDestroy;
 import jakarta.annotation.PostConstruct;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -17,18 +17,18 @@ public class JobWorkerService {
 
     private static final Logger log = LoggerFactory.getLogger(JobWorkerService.class);
 
-    private final BlockingQueue<QueuedJob> jobDispatchQueue;
+    private final JobDispatchTransport jobDispatchTransport;
     private final JobExecutionService jobExecutionService;
     private final NanoJobProperties nanoJobProperties;
     private final AtomicInteger activeExecutions = new AtomicInteger();
     private final AtomicBoolean running = new AtomicBoolean(true);
 
     public JobWorkerService(
-            BlockingQueue<QueuedJob> jobDispatchQueue,
+            JobDispatchTransport jobDispatchTransport,
             JobExecutionService jobExecutionService,
             NanoJobProperties nanoJobProperties
     ) {
-        this.jobDispatchQueue = jobDispatchQueue;
+        this.jobDispatchTransport = jobDispatchTransport;
         this.jobExecutionService = jobExecutionService;
         this.nanoJobProperties = nanoJobProperties;
     }
@@ -55,7 +55,7 @@ public class JobWorkerService {
     private void consumeLoop() {
         while (running.get() && !Thread.currentThread().isInterrupted()) {
             try {
-                QueuedJob queuedJob = jobDispatchQueue.take();
+                QueuedJob queuedJob = jobDispatchTransport.take();
                 Map<String, String> previous = TraceContext.copy();
                 activeExecutions.incrementAndGet();
                 try {

@@ -7,16 +7,14 @@ import com.ifnodoraemon.nanojob.repository.JobOutboxEventRepository;
 import com.ifnodoraemon.nanojob.repository.JobRepository;
 import com.ifnodoraemon.nanojob.service.JobDispatchCapacityService;
 import com.ifnodoraemon.nanojob.service.JobWorkerService;
-import com.ifnodoraemon.nanojob.service.QueuedJob;
+import com.ifnodoraemon.nanojob.transport.JobDispatchTransport;
 import io.micrometer.core.instrument.Tags;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
-import java.util.concurrent.BlockingQueue;
 import java.util.EnumMap;
 import java.util.Map;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -29,7 +27,7 @@ public class JobMetricsService {
             MeterRegistry meterRegistry,
             JobRepository jobRepository,
             JobOutboxEventRepository jobOutboxEventRepository,
-            @Qualifier("jobDispatchQueue") BlockingQueue<QueuedJob> jobDispatchQueue,
+            JobDispatchTransport jobDispatchTransport,
             ObjectProvider<JobDispatchCapacityService> jobDispatchCapacityServiceProvider,
             ObjectProvider<JobWorkerService> jobWorkerServiceProvider
     ) {
@@ -56,7 +54,7 @@ public class JobMetricsService {
                         })
                 .description("Current active nano-job job executions")
                 .register(meterRegistry);
-        Gauge.builder("nano.job.executor.queue.size", jobDispatchQueue, BlockingQueue::size)
+        Gauge.builder("nano.job.executor.queue.size", jobDispatchTransport, JobDispatchTransport::depth)
                 .description("Current nano-job dispatch queue size")
                 .register(meterRegistry);
         Gauge.builder("nano.job.dispatch.available_slots",

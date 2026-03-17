@@ -7,12 +7,11 @@ import com.ifnodoraemon.nanojob.domain.enums.OutboxEventType;
 import com.ifnodoraemon.nanojob.domain.enums.OutboxStatus;
 import com.ifnodoraemon.nanojob.metrics.JobMetricsService;
 import com.ifnodoraemon.nanojob.repository.JobOutboxEventRepository;
+import com.ifnodoraemon.nanojob.transport.JobDispatchTransport;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
-import java.util.concurrent.BlockingQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,20 +24,20 @@ public class JobOutboxService {
 
     private final JobOutboxEventRepository jobOutboxEventRepository;
     private final NanoJobProperties nanoJobProperties;
-    private final BlockingQueue<QueuedJob> jobDispatchQueue;
+    private final JobDispatchTransport jobDispatchTransport;
     private final JobMetricsService jobMetricsService;
     private final TransactionTemplate transactionTemplate;
 
     public JobOutboxService(
             JobOutboxEventRepository jobOutboxEventRepository,
             NanoJobProperties nanoJobProperties,
-            @Qualifier("jobDispatchQueue") BlockingQueue<QueuedJob> jobDispatchQueue,
+            JobDispatchTransport jobDispatchTransport,
             JobMetricsService jobMetricsService,
             TransactionTemplate transactionTemplate
     ) {
         this.jobOutboxEventRepository = jobOutboxEventRepository;
         this.nanoJobProperties = nanoJobProperties;
-        this.jobDispatchQueue = jobDispatchQueue;
+        this.jobDispatchTransport = jobDispatchTransport;
         this.jobMetricsService = jobMetricsService;
         this.transactionTemplate = transactionTemplate;
     }
@@ -78,7 +77,7 @@ public class JobOutboxService {
                     event.getExecutionToken(),
                     event.getId()
             );
-            if (jobDispatchQueue.offer(queuedJob)) {
+            if (jobDispatchTransport.publish(queuedJob)) {
                 jobMetricsService.recordOutboxPublished(event.getJobType());
                 continue;
             }

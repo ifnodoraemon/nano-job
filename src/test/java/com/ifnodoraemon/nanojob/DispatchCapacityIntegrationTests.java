@@ -23,7 +23,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 @SpringBootTest(properties = {
         "nano-job.execution.pool-size=1",
         "nano-job.execution.queue-capacity=0",
-        "nano-job.execution.rejection-policy=ABORT",
         "nano-job.scheduler.poll-interval=10s",
         "nano-job.scheduler.capacity-aware-dispatch=true",
         "nano-job.scheduler.batch-size=10"
