@@ -8,6 +8,7 @@ public record JobLogResponse(
         JobStatus status,
         LocalDateTime startedAt,
         LocalDateTime finishedAt,
-        String message
+        String message,
+        String traceId
 ) {
 }

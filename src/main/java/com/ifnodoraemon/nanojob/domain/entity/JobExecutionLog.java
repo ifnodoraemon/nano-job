@@ -40,6 +40,9 @@ public class JobExecutionLog {
     @Column(columnDefinition = "TEXT")
     private String message;
 
+    @Column(length = 64)
+    private String traceId;
+
     @PrePersist
     void onCreate() {
         if (startedAt == null) {
@@ -97,5 +100,13 @@ public class JobExecutionLog {
 
     public void setMessage(String message) {
         this.message = message;
+    }
+
+    public String getTraceId() {
+        return traceId;
+    }
+
+    public void setTraceId(String traceId) {
+        this.traceId = traceId;
     }
 }

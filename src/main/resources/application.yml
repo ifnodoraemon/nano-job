@@ -24,6 +24,8 @@ nano-job:
     poll-interval: 1s
   execution:
     pool-size: 4
+    queue-capacity: 100
+    rejection-policy: ABORT
     retry-delay: 30s
     lease-duration: 30s
     worker-id: local-worker

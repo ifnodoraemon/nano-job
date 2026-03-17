@@ -4,6 +4,7 @@ import com.ifnodoraemon.nanojob.domain.entity.Job;
 import com.ifnodoraemon.nanojob.domain.entity.JobExecutionLog;
 import com.ifnodoraemon.nanojob.domain.enums.JobStatus;
 import com.ifnodoraemon.nanojob.repository.JobExecutionLogRepository;
+import com.ifnodoraemon.nanojob.support.tracing.TraceContext;
 import java.time.LocalDateTime;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +25,7 @@ public class JobExecutionLogService {
         log.setAttemptNo(job.getRetryCount() + 1);
         log.setStatus(JobStatus.RUNNING);
         log.setStartedAt(LocalDateTime.now());
+        log.setTraceId(TraceContext.currentOrCreate("exec"));
         return jobExecutionLogRepository.save(log);
     }
 

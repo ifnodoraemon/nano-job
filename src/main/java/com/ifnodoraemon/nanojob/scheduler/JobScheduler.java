@@ -1,6 +1,7 @@
 package com.ifnodoraemon.nanojob.scheduler;
 
 import com.ifnodoraemon.nanojob.service.JobDispatchService;
+import com.ifnodoraemon.nanojob.support.tracing.TraceContext;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -15,6 +16,6 @@ public class JobScheduler {
 
     @Scheduled(fixedDelayString = "${nano-job.scheduler.poll-interval:1s}")
     public void poll() {
-        jobDispatchService.dispatchDueJobs();
+        TraceContext.withTraceId(TraceContext.newTraceId("sched"), jobDispatchService::dispatchDueJobs);
     }
 }

@@ -7,6 +7,7 @@ import com.ifnodoraemon.nanojob.repository.JobRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.time.LocalDateTime;
+import com.ifnodoraemon.nanojob.support.tracing.TraceContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -54,8 +55,9 @@ public class JobDispatchService {
             }
         }
         log.debug(
-                "Scheduler tick at {}, timedOutRunningJobs={}, dueJobs={}, dispatched={}",
+                "Scheduler tick at {} traceId={} timedOutRunningJobs={} dueJobs={} dispatched={}",
                 now,
+                TraceContext.getTraceId(),
                 timedOutRunningJobs.size(),
                 dueJobs.size(),
                 dispatched

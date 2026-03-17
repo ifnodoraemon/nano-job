@@ -115,7 +115,8 @@ public class JobService {
                         log.getStatus(),
                         log.getStartedAt(),
                         log.getFinishedAt(),
-                        log.getMessage()))
+                        log.getMessage(),
+                        log.getTraceId()))
                 .toList();
     }
 

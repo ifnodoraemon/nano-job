@@ -44,6 +44,8 @@ public class NanoJobProperties {
     public static class Execution {
 
         private int poolSize = 4;
+        private int queueCapacity = 100;
+        private ExecutionRejectionPolicy rejectionPolicy = ExecutionRejectionPolicy.ABORT;
         private Duration retryDelay = Duration.ofSeconds(30);
         private Duration leaseDuration = Duration.ofSeconds(30);
         private String workerId = "local-worker";
@@ -54,6 +56,22 @@ public class NanoJobProperties {
 
         public void setPoolSize(int poolSize) {
             this.poolSize = poolSize;
+        }
+
+        public int getQueueCapacity() {
+            return queueCapacity;
+        }
+
+        public void setQueueCapacity(int queueCapacity) {
+            this.queueCapacity = queueCapacity;
+        }
+
+        public ExecutionRejectionPolicy getRejectionPolicy() {
+            return rejectionPolicy;
+        }
+
+        public void setRejectionPolicy(ExecutionRejectionPolicy rejectionPolicy) {
+            this.rejectionPolicy = rejectionPolicy;
         }
 
         public Duration getRetryDelay() {

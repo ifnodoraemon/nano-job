@@ -3,11 +3,14 @@ package com.ifnodoraemon.nanojob.metrics;
 import com.ifnodoraemon.nanojob.domain.enums.JobStatus;
 import com.ifnodoraemon.nanojob.domain.enums.JobType;
 import com.ifnodoraemon.nanojob.repository.JobRepository;
+import io.micrometer.core.instrument.Tags;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.EnumMap;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -16,7 +19,11 @@ public class JobMetricsService {
     private final MeterRegistry meterRegistry;
     private final Map<JobStatus, Gauge> statusGauges = new EnumMap<>(JobStatus.class);
 
-    public JobMetricsService(MeterRegistry meterRegistry, JobRepository jobRepository) {
+    public JobMetricsService(
+            MeterRegistry meterRegistry,
+            JobRepository jobRepository,
+            @Qualifier("jobTaskExecutor") ThreadPoolTaskExecutor jobTaskExecutor
+    ) {
         this.meterRegistry = meterRegistry;
         for (JobStatus status : JobStatus.values()) {
             Gauge gauge = Gauge.builder("nano.job.status.count", jobRepository, repo -> repo.countByStatus(status))
@@ -25,6 +32,14 @@ public class JobMetricsService {
                     .register(meterRegistry);
             statusGauges.put(status, gauge);
         }
+
+        Gauge.builder("nano.job.executor.active.count", jobTaskExecutor, ThreadPoolTaskExecutor::getActiveCount)
+                .description("Current active nano-job worker threads")
+                .register(meterRegistry);
+        Gauge.builder("nano.job.executor.queue.size", jobTaskExecutor,
+                        executor -> executor.getThreadPoolExecutor() == null ? 0 : executor.getThreadPoolExecutor().getQueue().size())
+                .description("Current nano-job executor queue size")
+                .register(meterRegistry);
     }
 
     public void recordExecutionStarted(JobType type) {
@@ -55,10 +70,14 @@ public class JobMetricsService {
         counter("nano.job.dispatch.claimed", type).increment();
     }
 
+    public void recordExecutionRejected(JobType type) {
+        counter("nano.job.execution.rejected", type).increment();
+    }
+
     private Counter counter(String name, JobType type) {
         return Counter.builder(name)
                 .description("nano-job execution metric")
-                .tag("type", type.name())
+                .tags(Tags.of("type", type.name()))
                 .register(meterRegistry);
     }
 }
