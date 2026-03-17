@@ -3,14 +3,18 @@ package com.ifnodoraemon.nanojob.metrics;
 import com.ifnodoraemon.nanojob.domain.enums.JobStatus;
 import com.ifnodoraemon.nanojob.domain.enums.JobType;
 import com.ifnodoraemon.nanojob.repository.JobRepository;
+import com.ifnodoraemon.nanojob.service.JobDispatchCapacityService;
+import com.ifnodoraemon.nanojob.service.JobWorkerService;
+import com.ifnodoraemon.nanojob.service.QueuedJob;
 import io.micrometer.core.instrument.Tags;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.util.concurrent.BlockingQueue;
 import java.util.EnumMap;
 import java.util.Map;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -22,7 +26,9 @@ public class JobMetricsService {
     public JobMetricsService(
             MeterRegistry meterRegistry,
             JobRepository jobRepository,
-            @Qualifier("jobTaskExecutor") ThreadPoolTaskExecutor jobTaskExecutor
+            @Qualifier("jobDispatchQueue") BlockingQueue<QueuedJob> jobDispatchQueue,
+            ObjectProvider<JobDispatchCapacityService> jobDispatchCapacityServiceProvider,
+            ObjectProvider<JobWorkerService> jobWorkerServiceProvider
     ) {
         this.meterRegistry = meterRegistry;
         for (JobStatus status : JobStatus.values()) {
@@ -33,21 +39,23 @@ public class JobMetricsService {
             statusGauges.put(status, gauge);
         }
 
-        Gauge.builder("nano.job.executor.active.count", jobTaskExecutor, ThreadPoolTaskExecutor::getActiveCount)
-                .description("Current active nano-job worker threads")
+        Gauge.builder("nano.job.executor.active.count",
+                        jobWorkerServiceProvider,
+                        provider -> {
+                            JobWorkerService service = provider.getIfAvailable();
+                            return service == null ? 0 : service.getActiveExecutionCount();
+                        })
+                .description("Current active nano-job job executions")
                 .register(meterRegistry);
-        Gauge.builder("nano.job.executor.queue.size", jobTaskExecutor,
-                        executor -> executor.getThreadPoolExecutor() == null ? 0 : executor.getThreadPoolExecutor().getQueue().size())
-                .description("Current nano-job executor queue size")
+        Gauge.builder("nano.job.executor.queue.size", jobDispatchQueue, BlockingQueue::size)
+                .description("Current nano-job dispatch queue size")
                 .register(meterRegistry);
-        Gauge.builder("nano.job.dispatch.available_slots", jobTaskExecutor, executor -> {
-                    if (executor.getThreadPoolExecutor() == null) {
-                        return 0;
-                    }
-                    int totalCapacity = executor.getMaxPoolSize() + executor.getThreadPoolExecutor().getQueue().remainingCapacity();
-                    int inFlight = executor.getActiveCount() + executor.getThreadPoolExecutor().getQueue().size();
-                    return Math.max(0, totalCapacity - inFlight);
-                })
+        Gauge.builder("nano.job.dispatch.available_slots",
+                        jobDispatchCapacityServiceProvider,
+                        provider -> {
+                            JobDispatchCapacityService service = provider.getIfAvailable();
+                            return service == null ? 0 : service.availableSubmissionSlots();
+                        })
                 .description("Estimated available nano-job dispatch slots")
                 .register(meterRegistry);
     }

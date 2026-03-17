@@ -1,24 +1,29 @@
 package com.ifnodoraemon.nanojob.service;
 
+import com.ifnodoraemon.nanojob.config.NanoJobProperties;
+import java.util.concurrent.BlockingQueue;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 
 @Service
 public class JobDispatchCapacityService {
 
-    private final ThreadPoolTaskExecutor jobTaskExecutor;
+    private final BlockingQueue<QueuedJob> jobDispatchQueue;
+    private final JobWorkerService jobWorkerService;
+    private final NanoJobProperties nanoJobProperties;
 
-    public JobDispatchCapacityService(@Qualifier("jobTaskExecutor") ThreadPoolTaskExecutor jobTaskExecutor) {
-        this.jobTaskExecutor = jobTaskExecutor;
+    public JobDispatchCapacityService(
+            @Qualifier("jobDispatchQueue") BlockingQueue<QueuedJob> jobDispatchQueue,
+            JobWorkerService jobWorkerService,
+            NanoJobProperties nanoJobProperties
+    ) {
+        this.jobDispatchQueue = jobDispatchQueue;
+        this.jobWorkerService = jobWorkerService;
+        this.nanoJobProperties = nanoJobProperties;
     }
 
     public int availableSubmissionSlots() {
-        if (jobTaskExecutor.getThreadPoolExecutor() == null) {
-            return 0;
-        }
-        int totalCapacity = jobTaskExecutor.getMaxPoolSize() + jobTaskExecutor.getThreadPoolExecutor().getQueue().remainingCapacity();
-        int inFlight = jobTaskExecutor.getActiveCount() + jobTaskExecutor.getThreadPoolExecutor().getQueue().size();
-        return Math.max(0, totalCapacity - inFlight);
+        int idleWorkers = Math.max(0, nanoJobProperties.getExecution().getPoolSize() - jobWorkerService.getActiveExecutionCount());
+        return idleWorkers + jobDispatchQueue.remainingCapacity();
     }
 }

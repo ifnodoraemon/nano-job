@@ -7,11 +7,10 @@ import com.ifnodoraemon.nanojob.metrics.JobMetricsService;
 import com.ifnodoraemon.nanojob.repository.JobRepository;
 import com.ifnodoraemon.nanojob.support.exception.RetryableJobExecutionException;
 import com.ifnodoraemon.nanojob.support.tracing.TraceContext;
+import java.util.concurrent.BlockingQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.core.task.TaskExecutor;
-import org.springframework.core.task.TaskRejectedException;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -19,7 +18,7 @@ public class JobExecutionService {
 
     private static final Logger log = LoggerFactory.getLogger(JobExecutionService.class);
 
-    private final TaskExecutor jobTaskExecutor;
+    private final BlockingQueue<QueuedJob> jobDispatchQueue;
     private final JobHandlerRegistry jobHandlerRegistry;
     private final JobRepository jobRepository;
     private final JobLifecycleService jobLifecycleService;
@@ -28,7 +27,7 @@ public class JobExecutionService {
     private final JobMetricsService jobMetricsService;
 
     public JobExecutionService(
-            @Qualifier("jobTaskExecutor") TaskExecutor jobTaskExecutor,
+            @Qualifier("jobDispatchQueue") BlockingQueue<QueuedJob> jobDispatchQueue,
             JobHandlerRegistry jobHandlerRegistry,
             JobRepository jobRepository,
             JobLifecycleService jobLifecycleService,
@@ -36,7 +35,7 @@ public class JobExecutionService {
             JobExecutionLogService jobExecutionLogService,
             JobMetricsService jobMetricsService
     ) {
-        this.jobTaskExecutor = jobTaskExecutor;
+        this.jobDispatchQueue = jobDispatchQueue;
         this.jobHandlerRegistry = jobHandlerRegistry;
         this.jobRepository = jobRepository;
         this.jobLifecycleService = jobLifecycleService;
@@ -46,11 +45,14 @@ public class JobExecutionService {
     }
 
     public void submit(Long jobId) {
-        try {
-            jobTaskExecutor.execute(() -> run(jobId));
-        } catch (TaskRejectedException exception) {
-            handleRejectedSubmission(jobId, exception);
+        QueuedJob queuedJob = new QueuedJob(jobId, TraceContext.currentOrCreate("exec"));
+        if (!jobDispatchQueue.offer(queuedJob)) {
+            handleRejectedSubmission(jobId, "Dispatch queue rejected job " + jobId);
         }
+    }
+
+    void process(QueuedJob queuedJob) {
+        run(queuedJob.jobId());
     }
 
     private void run(Long jobId) {
@@ -80,7 +82,7 @@ public class JobExecutionService {
         }
     }
 
-    private void handleRejectedSubmission(Long jobId, TaskRejectedException exception) {
+    private void handleRejectedSubmission(Long jobId, String message) {
         Job job = jobRepository.findById(jobId).orElse(null);
         if (job == null) {
             log.warn("Job disappeared before rejected submission handling, jobId={}", jobId);
@@ -88,9 +90,9 @@ public class JobExecutionService {
         }
 
         var executionLog = jobExecutionLogService.start(job);
-        String message = "Task executor rejected job " + job.getJobKey();
-        log.warn("{} traceId={}", message, TraceContext.getTraceId(), exception);
-        jobLifecycleService.markFailure(job, new RetryableJobExecutionException(message, exception));
+        String jobMessage = message + " " + job.getJobKey();
+        log.warn("{} traceId={}", jobMessage, TraceContext.getTraceId());
+        jobLifecycleService.markFailure(job, new RetryableJobExecutionException(jobMessage));
         jobExecutionLogService.markFailure(executionLog.getId(), message);
         jobMetricsService.recordExecutionRejected(job.getType());
         jobMetricsService.recordExecutionFailed(job.getType());
