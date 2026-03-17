@@ -2,20 +2,19 @@ package com.ifnodoraemon.nanojob.handler;
 
 import com.ifnodoraemon.nanojob.domain.entity.Job;
 import com.ifnodoraemon.nanojob.domain.enums.JobType;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ifnodoraemon.nanojob.domain.payload.NoopJobPayload;
+import com.ifnodoraemon.nanojob.support.payload.JobPayloadMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 @Component
-public class NoopJobHandler implements JobHandler {
+public class NoopJobHandler extends AbstractPayloadJobHandler<NoopJobPayload> {
 
     private static final Logger log = LoggerFactory.getLogger(NoopJobHandler.class);
-    private final ObjectMapper objectMapper;
 
-    public NoopJobHandler(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
+    public NoopJobHandler(JobPayloadMapper jobPayloadMapper) {
+        super(jobPayloadMapper);
     }
 
     @Override
@@ -24,10 +23,14 @@ public class NoopJobHandler implements JobHandler {
     }
 
     @Override
-    public void handle(Job job) {
+    protected Class<NoopJobPayload> payloadType() {
+        return NoopJobPayload.class;
+    }
+
+    @Override
+    protected void handle(Job job, NoopJobPayload payload) {
         try {
-            JsonNode payload = objectMapper.readTree(job.getPayload());
-            long sleepMillis = payload.path("sleepMillis").asLong(0);
+            long sleepMillis = payload.sleepMillis() == null ? 0 : payload.sleepMillis();
             if (sleepMillis > 0) {
                 Thread.sleep(sleepMillis);
             }
@@ -35,8 +38,6 @@ public class NoopJobHandler implements JobHandler {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("NOOP handler interrupted for job " + job.getJobKey(), exception);
-        } catch (Exception exception) {
-            throw new IllegalStateException("Invalid NOOP payload for job " + job.getJobKey(), exception);
         }
     }
 }

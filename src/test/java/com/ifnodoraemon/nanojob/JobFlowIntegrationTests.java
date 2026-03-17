@@ -88,7 +88,7 @@ class JobFlowIntegrationTests {
                 1,
                 null
         ))).isInstanceOf(InvalidJobPayloadException.class)
-                .hasMessageContaining("non-blank url");
+                .hasMessageContaining("url must not be blank");
 
         assertThat(jobRepository.findAll()).isEmpty();
     }

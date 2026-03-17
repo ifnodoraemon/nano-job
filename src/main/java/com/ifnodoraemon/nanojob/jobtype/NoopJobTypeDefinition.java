@@ -1,13 +1,13 @@
 package com.ifnodoraemon.nanojob.jobtype;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.ifnodoraemon.nanojob.domain.enums.JobType;
-import com.ifnodoraemon.nanojob.support.exception.InvalidJobPayloadException;
+import com.ifnodoraemon.nanojob.domain.payload.NoopJobPayload;
+import com.ifnodoraemon.nanojob.support.payload.JobPayloadMapper;
 import java.util.List;
 import org.springframework.stereotype.Component;
 
 @Component
-public class NoopJobTypeDefinition implements JobTypeDefinition {
+public class NoopJobTypeDefinition extends AbstractPayloadJobTypeDefinition<NoopJobPayload> {
 
     private static final JobTypeDescriptor DESCRIPTOR = new JobTypeDescriptor(
             JobType.NOOP,
@@ -15,6 +15,10 @@ public class NoopJobTypeDefinition implements JobTypeDefinition {
             List.of(),
             List.of("note", "sleepMillis")
     );
+
+    public NoopJobTypeDefinition(JobPayloadMapper jobPayloadMapper) {
+        super(jobPayloadMapper);
+    }
 
     @Override
     public JobType getType() {
@@ -27,14 +31,7 @@ public class NoopJobTypeDefinition implements JobTypeDefinition {
     }
 
     @Override
-    public void validatePayload(JsonNode payload) {
-        if (payload == null || !payload.isObject()) {
-            throw new InvalidJobPayloadException(JobType.NOOP, "Payload must be a JSON object");
-        }
-
-        JsonNode sleepMillis = payload.get("sleepMillis");
-        if (sleepMillis != null && (!sleepMillis.canConvertToLong() || sleepMillis.asLong() < 0)) {
-            throw new InvalidJobPayloadException(JobType.NOOP, "sleepMillis must be a non-negative number");
-        }
+    protected Class<NoopJobPayload> payloadType() {
+        return NoopJobPayload.class;
     }
 }

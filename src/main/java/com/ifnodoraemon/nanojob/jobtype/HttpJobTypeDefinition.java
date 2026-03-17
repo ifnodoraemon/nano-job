@@ -1,13 +1,13 @@
 package com.ifnodoraemon.nanojob.jobtype;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import com.ifnodoraemon.nanojob.domain.payload.HttpJobPayload;
 import com.ifnodoraemon.nanojob.domain.enums.JobType;
-import com.ifnodoraemon.nanojob.support.exception.InvalidJobPayloadException;
+import com.ifnodoraemon.nanojob.support.payload.JobPayloadMapper;
 import java.util.List;
 import org.springframework.stereotype.Component;
 
 @Component
-public class HttpJobTypeDefinition implements JobTypeDefinition {
+public class HttpJobTypeDefinition extends AbstractPayloadJobTypeDefinition<HttpJobPayload> {
 
     private static final JobTypeDescriptor DESCRIPTOR = new JobTypeDescriptor(
             JobType.HTTP,
@@ -15,6 +15,10 @@ public class HttpJobTypeDefinition implements JobTypeDefinition {
             List.of("url"),
             List.of("method", "headers", "body", "timeoutMillis")
     );
+
+    public HttpJobTypeDefinition(JobPayloadMapper jobPayloadMapper) {
+        super(jobPayloadMapper);
+    }
 
     @Override
     public JobType getType() {
@@ -27,19 +31,7 @@ public class HttpJobTypeDefinition implements JobTypeDefinition {
     }
 
     @Override
-    public void validatePayload(JsonNode payload) {
-        if (payload == null || !payload.isObject()) {
-            throw new InvalidJobPayloadException(JobType.HTTP, "Payload must be a JSON object");
-        }
-
-        String url = payload.path("url").asText();
-        if (url == null || url.isBlank()) {
-            throw new InvalidJobPayloadException(JobType.HTTP, "Payload must contain a non-blank url");
-        }
-
-        JsonNode timeoutMillis = payload.get("timeoutMillis");
-        if (timeoutMillis != null && (!timeoutMillis.canConvertToLong() || timeoutMillis.asLong() < 0)) {
-            throw new InvalidJobPayloadException(JobType.HTTP, "timeoutMillis must be a non-negative number");
-        }
+    protected Class<HttpJobPayload> payloadType() {
+        return HttpJobPayload.class;
     }
 }
