@@ -40,13 +40,26 @@ public class JobLifecycleService {
     public boolean tryClaim(Job job) {
         // Use a conditional update as a lightweight compare-and-set so the same
         // job cannot be claimed twice when scheduler ticks overlap.
+        LocalDateTime now = LocalDateTime.now();
         return jobRepository.claimForExecution(
                 job.getId(),
                 EnumSet.of(JobStatus.PENDING, JobStatus.RETRY_WAIT),
                 JobStatus.RUNNING,
                 properties.getExecution().getWorkerId(),
-                LocalDateTime.now().plus(properties.getExecution().getLeaseDuration()),
-                LocalDateTime.now()
+                now.plus(properties.getExecution().getLeaseDuration()),
+                now
+        ) == 1;
+    }
+
+    @Transactional
+    public boolean renewLease(Long jobId) {
+        LocalDateTime now = LocalDateTime.now();
+        return jobRepository.renewLease(
+                jobId,
+                JobStatus.RUNNING,
+                properties.getExecution().getWorkerId(),
+                now.plus(properties.getExecution().getLeaseDuration()),
+                now
         ) == 1;
     }
 
@@ -95,10 +108,43 @@ public class JobLifecycleService {
     }
 
     @Transactional
-    public void recoverTimedOutJob(Job job) {
+    public boolean recoverTimedOutJob(Job job) {
         String errorMessage = "Execution lease expired for owner: " + job.getLockOwner();
-        markFailure(job, new IllegalStateException(errorMessage));
+        RetryDecision decision = retryPolicyRegistry.get(job.getType()).evaluate(job, new IllegalStateException(errorMessage));
+        LocalDateTime now = LocalDateTime.now();
+        int updated = decision.retryable()
+                ? jobRepository.recoverTimedOutToRetryWaiting(
+                        job.getId(),
+                        JobStatus.RUNNING,
+                        job.getLockOwner(),
+                        job.getLeaseExpiresAt(),
+                        JobStatus.RETRY_WAIT,
+                        decision.nextRetryCount(),
+                        decision.nextRetryAt(),
+                        decision.reason(),
+                        now
+                )
+                : jobRepository.recoverTimedOutToFailed(
+                        job.getId(),
+                        JobStatus.RUNNING,
+                        job.getLockOwner(),
+                        job.getLeaseExpiresAt(),
+                        JobStatus.FAILED,
+                        decision.nextRetryCount(),
+                        decision.reason(),
+                        now
+                );
+        if (updated != 1) {
+            return false;
+        }
+
+        if (decision.retryable()) {
+            jobMetricsService.recordRetryScheduled(job.getType());
+        } else {
+            jobMetricsService.recordFinalFailure(job.getType());
+        }
         jobExecutionLogService.markLatestRunningAsFailed(job.getId(), errorMessage);
         jobMetricsService.recordLeaseRecovered(job.getType());
+        return true;
     }
 }

@@ -23,6 +23,7 @@ public class JobExecutionService {
     private final JobHandlerRegistry jobHandlerRegistry;
     private final JobRepository jobRepository;
     private final JobLifecycleService jobLifecycleService;
+    private final JobLeaseHeartbeatService jobLeaseHeartbeatService;
     private final JobExecutionLogService jobExecutionLogService;
     private final JobMetricsService jobMetricsService;
 
@@ -31,6 +32,7 @@ public class JobExecutionService {
             JobHandlerRegistry jobHandlerRegistry,
             JobRepository jobRepository,
             JobLifecycleService jobLifecycleService,
+            JobLeaseHeartbeatService jobLeaseHeartbeatService,
             JobExecutionLogService jobExecutionLogService,
             JobMetricsService jobMetricsService
     ) {
@@ -38,6 +40,7 @@ public class JobExecutionService {
         this.jobHandlerRegistry = jobHandlerRegistry;
         this.jobRepository = jobRepository;
         this.jobLifecycleService = jobLifecycleService;
+        this.jobLeaseHeartbeatService = jobLeaseHeartbeatService;
         this.jobExecutionLogService = jobExecutionLogService;
         this.jobMetricsService = jobMetricsService;
     }
@@ -63,7 +66,7 @@ public class JobExecutionService {
         log.debug("Executing jobKey={} handler={} traceId={}",
                 job.getJobKey(), handler.getClass().getSimpleName(), TraceContext.getTraceId());
 
-        try {
+        try (var ignored = jobLeaseHeartbeatService.start(job)) {
             handler.handle(job);
             jobLifecycleService.markSuccess(job.getId());
             jobExecutionLogService.markSuccess(executionLog.getId(), "Execution completed");

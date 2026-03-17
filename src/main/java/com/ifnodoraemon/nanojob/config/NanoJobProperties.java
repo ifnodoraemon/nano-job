@@ -57,6 +57,7 @@ public class NanoJobProperties {
         private ExecutionRejectionPolicy rejectionPolicy = ExecutionRejectionPolicy.ABORT;
         private Duration retryDelay = Duration.ofSeconds(30);
         private Duration leaseDuration = Duration.ofSeconds(30);
+        private Duration leaseHeartbeatInterval = Duration.ofSeconds(10);
         private String workerId = "local-worker";
 
         public int getPoolSize() {
@@ -97,6 +98,14 @@ public class NanoJobProperties {
 
         public void setLeaseDuration(Duration leaseDuration) {
             this.leaseDuration = leaseDuration;
+        }
+
+        public Duration getLeaseHeartbeatInterval() {
+            return leaseHeartbeatInterval;
+        }
+
+        public void setLeaseHeartbeatInterval(Duration leaseHeartbeatInterval) {
+            this.leaseHeartbeatInterval = leaseHeartbeatInterval;
         }
 
         public String getWorkerId() {

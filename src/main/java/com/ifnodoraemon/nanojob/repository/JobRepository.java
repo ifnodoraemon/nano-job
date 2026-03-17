@@ -68,6 +68,23 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             update Job j
+               set j.leaseExpiresAt = :leaseExpiresAt,
+                   j.updatedAt = :updatedAt
+             where j.id = :jobId
+               and j.status = :expectedStatus
+               and j.lockOwner = :lockOwner
+            """)
+    int renewLease(
+            @Param("jobId") Long jobId,
+            @Param("expectedStatus") JobStatus expectedStatus,
+            @Param("lockOwner") String lockOwner,
+            @Param("leaseExpiresAt") LocalDateTime leaseExpiresAt,
+            @Param("updatedAt") LocalDateTime updatedAt
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            update Job j
                set j.status = :successStatus,
                    j.lockOwner = null,
                    j.leaseExpiresAt = null,
@@ -108,6 +125,33 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             update Job j
+               set j.status = :retryWaitStatus,
+                   j.retryCount = :retryCount,
+                   j.nextRetryAt = :nextRetryAt,
+                   j.lockOwner = null,
+                   j.leaseExpiresAt = null,
+                   j.lastError = :lastError,
+                   j.updatedAt = :updatedAt
+             where j.id = :jobId
+               and j.status = :expectedStatus
+               and j.lockOwner = :lockOwner
+               and j.leaseExpiresAt = :expectedLeaseExpiresAt
+            """)
+    int recoverTimedOutToRetryWaiting(
+            @Param("jobId") Long jobId,
+            @Param("expectedStatus") JobStatus expectedStatus,
+            @Param("lockOwner") String lockOwner,
+            @Param("expectedLeaseExpiresAt") LocalDateTime expectedLeaseExpiresAt,
+            @Param("retryWaitStatus") JobStatus retryWaitStatus,
+            @Param("retryCount") Integer retryCount,
+            @Param("nextRetryAt") LocalDateTime nextRetryAt,
+            @Param("lastError") String lastError,
+            @Param("updatedAt") LocalDateTime updatedAt
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            update Job j
                set j.status = :failedStatus,
                    j.retryCount = :retryCount,
                    j.lockOwner = null,
@@ -120,6 +164,31 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
     int markFailed(
             @Param("jobId") Long jobId,
             @Param("expectedStatus") JobStatus expectedStatus,
+            @Param("failedStatus") JobStatus failedStatus,
+            @Param("retryCount") Integer retryCount,
+            @Param("lastError") String lastError,
+            @Param("updatedAt") LocalDateTime updatedAt
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            update Job j
+               set j.status = :failedStatus,
+                   j.retryCount = :retryCount,
+                   j.lockOwner = null,
+                   j.leaseExpiresAt = null,
+                   j.lastError = :lastError,
+                   j.updatedAt = :updatedAt
+             where j.id = :jobId
+               and j.status = :expectedStatus
+               and j.lockOwner = :lockOwner
+               and j.leaseExpiresAt = :expectedLeaseExpiresAt
+            """)
+    int recoverTimedOutToFailed(
+            @Param("jobId") Long jobId,
+            @Param("expectedStatus") JobStatus expectedStatus,
+            @Param("lockOwner") String lockOwner,
+            @Param("expectedLeaseExpiresAt") LocalDateTime expectedLeaseExpiresAt,
             @Param("failedStatus") JobStatus failedStatus,
             @Param("retryCount") Integer retryCount,
             @Param("lastError") String lastError,

@@ -7,6 +7,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 @Configuration
 public class ExecutorConfig {
@@ -33,6 +34,17 @@ public class ExecutorConfig {
         });
         executor.initialize();
         return executor;
+    }
+
+    @Bean(name = "jobLeaseScheduler")
+    public ThreadPoolTaskScheduler jobLeaseScheduler() {
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(1);
+        scheduler.setThreadNamePrefix("nano-job-lease-");
+        scheduler.setWaitForTasksToCompleteOnShutdown(true);
+        scheduler.setAwaitTerminationSeconds(5);
+        scheduler.initialize();
+        return scheduler;
     }
 
     private RejectedExecutionHandler rejectedExecutionHandler(NanoJobProperties properties) {

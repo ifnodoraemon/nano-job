@@ -66,6 +66,10 @@ public class JobMetricsService {
         counter("nano.job.execution.lease_recovered", type).increment();
     }
 
+    public void recordLeaseRenewed(JobType type) {
+        counter("nano.job.execution.lease_renewed", type).increment();
+    }
+
     public void recordDispatchClaimed(JobType type) {
         counter("nano.job.dispatch.claimed", type).increment();
     }

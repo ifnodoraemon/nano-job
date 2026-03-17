@@ -29,6 +29,7 @@ nano-job:
     rejection-policy: ABORT
     retry-delay: 30s
     lease-duration: 30s
+    lease-heartbeat-interval: 10s
     worker-id: local-worker
   dedup:
     mode: RETURN_EXISTING
