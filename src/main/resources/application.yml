@@ -27,3 +27,6 @@ nano-job:
     retry-delay: 30s
     lease-duration: 30s
     worker-id: local-worker
+  dedup:
+    mode: RETURN_EXISTING
+    detect-drift: true

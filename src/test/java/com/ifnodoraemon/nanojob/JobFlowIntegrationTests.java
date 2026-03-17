@@ -13,6 +13,7 @@ import com.ifnodoraemon.nanojob.repository.JobRepository;
 import com.ifnodoraemon.nanojob.service.JobDispatchService;
 import com.ifnodoraemon.nanojob.service.JobService;
 import com.ifnodoraemon.nanojob.service.JobTypeService;
+import com.ifnodoraemon.nanojob.support.exception.DuplicateJobSubmissionException;
 import com.ifnodoraemon.nanojob.support.exception.InvalidJobPayloadException;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -264,6 +265,28 @@ class JobFlowIntegrationTests {
 
         assertThat(second.jobKey()).isEqualTo(first.jobKey());
         assertThat(second.dedupKey()).isEqualTo("order-123");
+        assertThat(jobRepository.findAll()).hasSize(1);
+    }
+
+    @Test
+    void shouldRejectDedupReuseWhenPayloadDrifts() {
+        jobService.createJob(new CreateJobRequest(
+                JobType.NOOP,
+                objectMapper.createObjectNode().put("note", "first"),
+                LocalDateTime.now().plusSeconds(30),
+                0,
+                "order-456"
+        ));
+
+        assertThatThrownBy(() -> jobService.createJob(new CreateJobRequest(
+                JobType.NOOP,
+                objectMapper.createObjectNode().put("note", "changed"),
+                LocalDateTime.now().plusSeconds(30),
+                0,
+                "order-456"
+        ))).isInstanceOf(DuplicateJobSubmissionException.class)
+                .hasMessageContaining("type or payload differs");
+
         assertThat(jobRepository.findAll()).hasSize(1);
     }
 

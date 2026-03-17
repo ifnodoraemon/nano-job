@@ -7,9 +7,12 @@ import com.ifnodoraemon.nanojob.domain.dto.JobResponse;
 import com.ifnodoraemon.nanojob.domain.entity.Job;
 import com.ifnodoraemon.nanojob.domain.enums.JobStatus;
 import com.ifnodoraemon.nanojob.domain.enums.JobType;
+import com.ifnodoraemon.nanojob.dedup.DeduplicationAction;
+import com.ifnodoraemon.nanojob.dedup.DeduplicationPolicy;
 import com.ifnodoraemon.nanojob.jobtype.JobTypeDefinitionRegistry;
 import com.ifnodoraemon.nanojob.repository.JobExecutionLogRepository;
 import com.ifnodoraemon.nanojob.repository.JobRepository;
+import com.ifnodoraemon.nanojob.support.exception.DuplicateJobSubmissionException;
 import com.ifnodoraemon.nanojob.support.exception.InvalidJobStateException;
 import com.ifnodoraemon.nanojob.support.exception.JobNotFoundException;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -32,37 +35,38 @@ public class JobService {
     private final JobRepository jobRepository;
     private final JobExecutionLogRepository jobExecutionLogRepository;
     private final JobTypeDefinitionRegistry jobTypeDefinitionRegistry;
+    private final DeduplicationPolicy deduplicationPolicy;
     private final ObjectMapper objectMapper;
 
     public JobService(
             JobRepository jobRepository,
             JobExecutionLogRepository jobExecutionLogRepository,
             JobTypeDefinitionRegistry jobTypeDefinitionRegistry,
+            DeduplicationPolicy deduplicationPolicy,
             ObjectMapper objectMapper
     ) {
         this.jobRepository = jobRepository;
         this.jobExecutionLogRepository = jobExecutionLogRepository;
         this.jobTypeDefinitionRegistry = jobTypeDefinitionRegistry;
+        this.deduplicationPolicy = deduplicationPolicy;
         this.objectMapper = objectMapper;
     }
 
     @Transactional
     public JobResponse createJob(CreateJobRequest request) {
         jobTypeDefinitionRegistry.get(request.type()).validatePayload(request.payload());
-
-        if (request.dedupKey() != null && !request.dedupKey().isBlank()) {
-            var existing = jobRepository.findFirstByDedupKeyAndStatusInOrderByCreatedAtDesc(
-                    request.dedupKey(),
-                    Set.of(JobStatus.PENDING, JobStatus.RUNNING, JobStatus.RETRY_WAIT)
-            );
-            if (existing.isPresent()) {
-                return toResponse(existing.get());
-            }
+        String normalizedDedupKey = normalizeDedupKey(request.dedupKey());
+        var dedupDecision = deduplicationPolicy.evaluate(request, normalizedDedupKey);
+        if (dedupDecision.action() == DeduplicationAction.RETURN_EXISTING) {
+            return toResponse(dedupDecision.existingJob());
+        }
+        if (dedupDecision.action() == DeduplicationAction.REJECT) {
+            throw new DuplicateJobSubmissionException(dedupDecision.reason());
         }
 
         Job job = new Job();
         job.setJobKey(generateJobKey());
-        job.setDedupKey(normalizeDedupKey(request.dedupKey()));
+        job.setDedupKey(normalizedDedupKey);
         job.setType(request.type());
         job.setStatus(JobStatus.PENDING);
         job.setPayload(writePayload(request.payload()));

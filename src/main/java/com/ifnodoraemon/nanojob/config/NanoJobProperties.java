@@ -1,5 +1,6 @@
 package com.ifnodoraemon.nanojob.config;
 
+import com.ifnodoraemon.nanojob.dedup.DeduplicationMode;
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -8,6 +9,7 @@ public class NanoJobProperties {
 
     private final Scheduler scheduler = new Scheduler();
     private final Execution execution = new Execution();
+    private final Dedup dedup = new Dedup();
 
     public Scheduler getScheduler() {
         return scheduler;
@@ -15,6 +17,10 @@ public class NanoJobProperties {
 
     public Execution getExecution() {
         return execution;
+    }
+
+    public Dedup getDedup() {
+        return dedup;
     }
 
     public static class Scheduler {
@@ -67,6 +73,28 @@ public class NanoJobProperties {
 
         public void setWorkerId(String workerId) {
             this.workerId = workerId;
+        }
+    }
+
+    public static class Dedup {
+
+        private DeduplicationMode mode = DeduplicationMode.RETURN_EXISTING;
+        private boolean detectDrift = true;
+
+        public DeduplicationMode getMode() {
+            return mode;
+        }
+
+        public void setMode(DeduplicationMode mode) {
+            this.mode = mode;
+        }
+
+        public boolean isDetectDrift() {
+            return detectDrift;
+        }
+
+        public void setDetectDrift(boolean detectDrift) {
+            this.detectDrift = detectDrift;
         }
     }
 }

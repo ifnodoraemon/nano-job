@@ -24,6 +24,13 @@ public class ApiExceptionHandler {
         return detail;
     }
 
+    @ExceptionHandler(DuplicateJobSubmissionException.class)
+    public ProblemDetail handleDuplicateSubmission(DuplicateJobSubmissionException exception) {
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+        detail.setType(URI.create("https://example.com/problems/duplicate-job-submission"));
+        return detail;
+    }
+
     @ExceptionHandler(InvalidJobPayloadException.class)
     public ProblemDetail handleInvalidPayload(InvalidJobPayloadException exception) {
         ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
